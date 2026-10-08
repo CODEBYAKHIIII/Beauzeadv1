@@ -49,6 +49,17 @@ import com.example.ui.theme.BackgroundColor
 import com.example.ui.theme.EmeraldInk
 import com.example.ui.theme.OnPrimary
 import com.example.ui.theme.TextSecondary
+import com.example.util.WavesValidation
+
+/**
+ * The field accepts either an Indian IFSC or an international SWIFT/BIC,
+ * so it is valid when either central validator accepts the value.
+ */
+private fun validateIfscOrSwift(value: String): String? = when {
+    value.isBlank() -> "IFSC / SWIFT / IBAN is required"
+    WavesValidation.ifsc(value) == null || WavesValidation.swiftBic(value) == null -> null
+    else -> "Enter a valid IFSC (e.g. HDFC0000123) or SWIFT/BIC (8 or 11 characters)"
+}
 
 @Composable
 fun BankAccountScreen(
@@ -79,8 +90,30 @@ fun BankAccountScreen(
     var ifscCode by remember { mutableStateOf(initial.ifscCode) }
     var branch by remember { mutableStateOf(initial.branch) }
     var upiId by remember { mutableStateOf(initial.upiId) }
+    var hasAttemptedSave by remember { mutableStateOf(false) }
+
+    val bankNameError =
+        if (hasAttemptedSave) WavesValidation.required(bankName, "Bank name") else null
+    val accountHolderError =
+        if (hasAttemptedSave) WavesValidation.name(accountHolder, "Account holder name") else null
+    val accountNumberError =
+        if (hasAttemptedSave) WavesValidation.bankAccountNumber(accountNumber) else null
+    val ifscError = if (hasAttemptedSave) validateIfscOrSwift(ifscCode) else null
+    val upiIdError =
+        if (hasAttemptedSave && upiId.isNotBlank()) WavesValidation.upiId(upiId) else null
 
     fun saveBankDetails() {
+        hasAttemptedSave = true
+        if (listOfNotNull(
+                WavesValidation.required(bankName, "Bank name"),
+                WavesValidation.name(accountHolder, "Account holder name"),
+                WavesValidation.bankAccountNumber(accountNumber),
+                validateIfscOrSwift(ifscCode),
+                if (upiId.isNotBlank()) WavesValidation.upiId(upiId) else null
+            ).isNotEmpty()
+        ) {
+            return
+        }
         coroutineScope.launch {
             isSaving = true
             errorMessage = ""
@@ -177,14 +210,16 @@ fun BankAccountScreen(
                         onValueChange = { bankName = it },
                         label = "Bank Name",
                         placeholder = "e.g. HDFC Bank",
-                        leadingIcon = Icons.Filled.AccountBalance
+                        leadingIcon = Icons.Filled.AccountBalance,
+                        errorMessage = bankNameError
                     )
 
                     WavesTextField(
                         value = accountHolder,
                         onValueChange = { accountHolder = it },
                         label = "Account Holder Name",
-                        placeholder = "e.g. Waves Studio Pvt Ltd"
+                        placeholder = "e.g. Waves Studio Pvt Ltd",
+                        errorMessage = accountHolderError
                     )
 
                     WavesTextField(
@@ -192,14 +227,16 @@ fun BankAccountScreen(
                         onValueChange = { accountNumber = it },
                         label = "Account Number",
                         placeholder = "e.g. 50200012345678",
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        errorMessage = accountNumberError
                     )
 
                     WavesTextField(
                         value = ifscCode,
                         onValueChange = { ifscCode = it },
                         label = "IFSC / SWIFT / IBAN",
-                        placeholder = "e.g. HDFC0001234"
+                        placeholder = "e.g. HDFC0001234",
+                        errorMessage = ifscError
                     )
 
                     WavesTextField(
@@ -213,7 +250,8 @@ fun BankAccountScreen(
                         value = upiId,
                         onValueChange = { upiId = it },
                         label = "UPI ID / VPA",
-                        placeholder = "e.g. company@okhdfcbank"
+                        placeholder = "e.g. company@okhdfcbank",
+                        errorMessage = upiIdError
                     )
                 }
             }

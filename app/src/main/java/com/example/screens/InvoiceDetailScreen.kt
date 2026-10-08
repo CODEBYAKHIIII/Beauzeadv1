@@ -86,6 +86,7 @@ import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.SurfaceColor
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import com.example.util.WavesValidation
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -631,6 +632,21 @@ private fun RecordPaymentBottomSheet(
     var isSavingPayment by remember { mutableStateOf(false) }
     var paymentError by remember { mutableStateOf("") }
     val methods = listOf("Cash", "Bank", "UPI", "Card", "Other")
+    var hasAttemptedSave by remember { mutableStateOf(false) }
+
+    // Inline validation errors (validate-on-save, surfaced via WavesTextField errorMessage)
+    val parsedAmountValue = amountStr.trim().replace(",", "").toDoubleOrNull()
+    val amountError = if (hasAttemptedSave) {
+        WavesValidation.firstError(
+            WavesValidation.amount(amountStr, "Amount"),
+            if (parsedAmountValue != null && parsedAmountValue > balanceDue) {
+                "Amount exceeds the outstanding balance"
+            } else null
+        )
+    } else null
+    val referenceError = if (hasAttemptedSave && reference.trim().length > 200) {
+        "Reference is too long (max 200 characters)"
+    } else null
 
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
@@ -654,7 +670,8 @@ private fun RecordPaymentBottomSheet(
                 value = amountStr,
                 onValueChange = { amountStr = it; paymentError = "" },
                 label = "Amount",
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                errorMessage = amountError
             )
 
             Column {
@@ -694,7 +711,8 @@ private fun RecordPaymentBottomSheet(
             WavesTextField(
                 value = reference,
                 onValueChange = { reference = it },
-                label = "Reference / Txn ID"
+                label = "Reference / Txn ID",
+                errorMessage = referenceError
             )
             if (paymentError.isNotBlank()) {
                 Text(paymentError, color = DangerRed, fontSize = 13.sp)
@@ -703,11 +721,14 @@ private fun RecordPaymentBottomSheet(
             WavesPrimaryButton(
                 text = if (isSavingPayment) "SAVING..." else "SAVE PAYMENT",
                 onClick = {
+                    hasAttemptedSave = true
                     val amount = amountStr.toDoubleOrNull()
-                    if (amount == null || amount <= 0.0) {
-                        paymentError = "Enter a payment amount greater than zero."
-                    } else if (!isSavingPayment) {
-                        coroutineScope.launch {
+                    when {
+                        // Inline field errors are shown on the inputs; block the save.
+                        amountError != null || referenceError != null -> Unit
+                        amount == null || amount <= 0.0 ->
+                            paymentError = "Enter a payment amount greater than zero."
+                        !isSavingPayment -> coroutineScope.launch {
                             isSavingPayment = true
                             paymentError = ""
                             try {

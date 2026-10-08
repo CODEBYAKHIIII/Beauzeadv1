@@ -55,6 +55,7 @@ import com.example.ui.theme.InputBorderGray
 import com.example.ui.theme.OnPrimary
 import com.example.ui.theme.SurfaceColor
 import com.example.ui.theme.TextSecondary
+import com.example.util.WavesValidation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -109,8 +110,13 @@ fun AddEditProductScreen(
 
     fun saveProduct() {
         hasSubmitted = true
+        val nameError = WavesValidation.name(name, "Product name")
+        val priceError = WavesValidation.amount(unitPrice, "Unit price", allowZero = true)
+        val quantityError = WavesValidation.quantity(defaultQuantity, "Quantity")
+        val taxError = WavesValidation.percent(taxRate, "Tax rate")
+        if (listOfNotNull(nameError, priceError, quantityError, taxError).isNotEmpty()) return
         val parsedPrice = unitPrice.toDoubleOrNull()
-        if (name.isBlank() || parsedPrice == null || parsedPrice < 0.0) return
+        if (parsedPrice == null || parsedPrice < 0.0) return
         val parsedQuantity = defaultQuantity.toIntOrNull()
         val parsedTax = taxRate.toDoubleOrNull()
         if (parsedQuantity == null || parsedQuantity < 1 || parsedTax == null || parsedTax < 0.0) {
@@ -209,7 +215,7 @@ fun AddEditProductScreen(
             SectionHeader(title = "BASIC INFORMATION")
             WavesCard {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    val nameError = if (hasSubmitted && name.isBlank()) "Product name is required" else null
+                    val nameError = if (hasSubmitted) WavesValidation.name(name, "Product name") else null
                     WavesTextField(
                         value = name,
                         onValueChange = { name = it },
@@ -239,12 +245,14 @@ fun AddEditProductScreen(
             SectionHeader(title = "PRICING")
             WavesCard {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    val priceError = if (hasSubmitted) WavesValidation.amount(unitPrice, "Unit price", allowZero = true) else null
                     WavesTextField(
                         value = unitPrice,
                         onValueChange = { unitPrice = it },
                         label = "Unit Price (₹) *",
                         placeholder = "0.00",
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        errorMessage = priceError
                     )
 
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -295,12 +303,14 @@ fun AddEditProductScreen(
                             }
                         }
 
+                        val quantityError = if (hasSubmitted) WavesValidation.quantity(defaultQuantity, "Quantity") else null
                         WavesTextField(
                             value = defaultQuantity,
                             onValueChange = { defaultQuantity = it },
                             label = "Default Quantity",
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            errorMessage = quantityError
                         )
                     }
                 }
@@ -309,12 +319,14 @@ fun AddEditProductScreen(
             // Section TAX: Tax Rate % (blank = use default)
             SectionHeader(title = "TAX")
             WavesCard {
+                val taxRateError = if (hasSubmitted) WavesValidation.percent(taxRate, "Tax rate") else null
                 WavesTextField(
                     value = taxRate,
                     onValueChange = { taxRate = it },
                     label = "Tax Rate % (blank = use default)",
                     placeholder = "18",
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    errorMessage = taxRateError
                 )
             }
 

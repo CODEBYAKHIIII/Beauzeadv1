@@ -39,6 +39,7 @@ import com.example.ui.theme.DangerRed
 import com.example.ui.theme.EmeraldInk
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import com.example.util.WavesValidation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -178,7 +179,10 @@ fun DeleteAccountOtpScreen(
                 WavesTextField(
                     value = otp,
                     onValueChange = { value ->
-                        if (value.length <= OTP_LENGTH && value.all { it in '0'..'9' }) otp = value
+                        if (value.length <= OTP_LENGTH && value.all { it in '0'..'9' }) {
+                            otp = value
+                            errorMessage = null
+                        }
                     },
                     label = "6-digit verification code",
                     placeholder = "000000",
@@ -218,23 +222,28 @@ fun DeleteAccountOtpScreen(
             Spacer(modifier = Modifier.height(4.dp))
             Button(
                 onClick = {
-                    coroutineScope.launch {
-                        isDeleting = true
-                        errorMessage = null
-                        try {
-                            AccountDeletionRepository.deleteAccount(otp)
-                            onAccountDeleted()
-                        } catch (exception: CancellationException) {
-                            throw exception
-                        } catch (exception: Exception) {
-                            errorMessage = exception.localizedMessage
-                                ?: "We couldn’t delete your account. Please try again."
-                        } finally {
-                            isDeleting = false
+                    val otpValidationError = WavesValidation.otp(otp, OTP_LENGTH)
+                    if (otpValidationError == null) {
+                        coroutineScope.launch {
+                            isDeleting = true
+                            errorMessage = null
+                            try {
+                                AccountDeletionRepository.deleteAccount(otp)
+                                onAccountDeleted()
+                            } catch (exception: CancellationException) {
+                                throw exception
+                            } catch (exception: Exception) {
+                                errorMessage = exception.localizedMessage
+                                    ?: "We couldn’t delete your account. Please try again."
+                            } finally {
+                                isDeleting = false
+                            }
                         }
+                    } else {
+                        errorMessage = otpValidationError
                     }
                 },
-                enabled = otp.length == OTP_LENGTH && !isDeleting && !isResending,
+                enabled = !isDeleting && !isResending,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),

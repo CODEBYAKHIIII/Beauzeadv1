@@ -76,6 +76,7 @@ import com.example.ui.theme.OnPrimary
 import com.example.ui.theme.SurfaceColor
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import com.example.util.WavesValidation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -96,6 +97,7 @@ fun CreateInvoiceScreen(
     var isSaving by remember { mutableStateOf(false) }
     var showSuccess by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
+    var hasAttemptedSave by remember { mutableStateOf(false) }
 
     val clientState by remember { FirestoreDataRepository.observeClients() }
         .collectAsState(initial = FirestoreState.Loading)
@@ -152,6 +154,7 @@ fun CreateInvoiceScreen(
     var itemQuantity by remember { mutableStateOf("1") }
     var itemUnitPrice by remember { mutableStateOf("") }
     var itemTaxRate by remember { mutableStateOf(business?.defaultTaxRate?.toString() ?: "18") }
+    var hasAttemptedItemSave by remember { mutableStateOf(false) }
 
     LaunchedEffect(business) {
         if (business != null) {
@@ -172,10 +175,62 @@ fun CreateInvoiceScreen(
         itemQuantity = item?.quantity?.toString() ?: "1"
         itemUnitPrice = item?.unitPrice?.takeIf { it > 0.0 }?.toString().orEmpty()
         itemTaxRate = item?.taxRate?.toString() ?: business?.defaultTaxRate?.toString() ?: "18"
+        hasAttemptedItemSave = false
         itemEditorOpen = true
     }
 
+    // Inline validation errors (validate-on-save, surfaced via WavesTextField errorMessage)
+    val itemNameError = if (hasAttemptedItemSave) {
+        WavesValidation.required(itemName, "Item name")
+    } else null
+    val itemQuantityError = if (hasAttemptedItemSave) {
+        WavesValidation.firstError(
+            WavesValidation.quantity(itemQuantity),
+            if (itemQuantity.trim().toDoubleOrNull() != null && itemQuantity.toIntOrNull() == null) {
+                "Quantity must be a whole number"
+            } else null
+        )
+    } else null
+    val itemUnitPriceError = if (hasAttemptedItemSave) {
+        WavesValidation.amount(itemUnitPrice, "Unit price", allowZero = true)
+    } else null
+    val itemTaxRateError = if (hasAttemptedItemSave) {
+        WavesValidation.percent(itemTaxRate, "Tax rate")
+    } else null
+
+    val parsedIssueDate = ReportDateUtils.parse(issueDate)
+    val parsedDueDate = ReportDateUtils.parse(dueDate)
+    val invoiceNumberError = if (hasAttemptedSave) {
+        WavesValidation.required(invoiceNumber, "Invoice number")
+    } else null
+    val issueDateError = if (hasAttemptedSave) {
+        WavesValidation.dateText(issueDate, "Issue date")
+    } else null
+    val dueDateError = if (hasAttemptedSave) {
+        WavesValidation.firstError(
+            WavesValidation.dateText(dueDate, "Due date"),
+            if (parsedIssueDate != null && parsedDueDate != null && parsedDueDate.before(parsedIssueDate)) {
+                "Due date cannot be before issue date"
+            } else null
+        )
+    } else null
+    val discountError = if (hasAttemptedSave && discountStr.isNotBlank()) {
+        WavesValidation.amount(discountStr, "Discount", allowZero = true)
+    } else null
+    val notesError = if (hasAttemptedSave && notes.length > 1000) {
+        "Notes are too long (max 1000 characters)"
+    } else null
+    val termsError = if (hasAttemptedSave && terms.length > 1000) {
+        "Payment terms are too long (max 1000 characters)"
+    } else null
+
     fun saveItemEditor() {
+        hasAttemptedItemSave = true
+        if (itemNameError != null || itemQuantityError != null ||
+            itemUnitPriceError != null || itemTaxRateError != null
+        ) {
+            return
+        }
         val quantity = itemQuantity.toIntOrNull()
         val unitPrice = itemUnitPrice.toDoubleOrNull()
         val taxRate = itemTaxRate.toDoubleOrNull()
@@ -220,6 +275,12 @@ fun CreateInvoiceScreen(
     }
 
     fun saveInvoice() {
+        hasAttemptedSave = true
+        if (invoiceNumberError != null || issueDateError != null || dueDateError != null ||
+            discountError != null || notesError != null || termsError != null
+        ) {
+            return
+        }
         val client = selectedClient
         if (client == null) {
             errorMessage = "Select a client before saving the invoice."
@@ -392,20 +453,23 @@ fun CreateInvoiceScreen(
                     WavesTextField(
                         value = invoiceNumber,
                         onValueChange = { invoiceNumber = it },
-                        label = "Invoice Number"
+                        label = "Invoice Number",
+                        errorMessage = invoiceNumberError
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         WavesTextField(
                             value = issueDate,
                             onValueChange = { issueDate = it },
                             label = "Issue Date",
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            errorMessage = issueDateError
                         )
                         WavesTextField(
                             value = dueDate,
                             onValueChange = { dueDate = it },
                             label = "Due Date",
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            errorMessage = dueDateError
                         )
                     }
                 }
@@ -561,6 +625,7 @@ fun CreateInvoiceScreen(
                                 value = discountStr,
                                 onValueChange = { discountStr = it },
                                 singleLine = true,
+                                isError = discountError != null,
                                 keyboardOptions = KeyboardOptions(
                                     keyboardType = KeyboardType.Number
                                 ),
@@ -576,6 +641,14 @@ fun CreateInvoiceScreen(
                                 )
                             )
                         }
+                    }
+                    if (discountError != null) {
+                        Text(
+                            text = discountError,
+                            fontSize = 12.sp,
+                            color = DangerRed,
+                            modifier = Modifier.align(Alignment.End)
+                        )
                     }
 
                     Row(
@@ -628,14 +701,16 @@ fun CreateInvoiceScreen(
                         onValueChange = { notes = it },
                         label = "Notes for Client",
                         singleLine = false,
-                        maxLines = 3
+                        maxLines = 3,
+                        errorMessage = notesError
                     )
                     WavesTextField(
                         value = terms,
                         onValueChange = { terms = it },
                         label = "Payment Terms",
                         singleLine = false,
-                        maxLines = 3
+                        maxLines = 3,
+                        errorMessage = termsError
                     )
                 }
             }
@@ -659,25 +734,29 @@ fun CreateInvoiceScreen(
                     WavesTextField(
                         value = itemName,
                         onValueChange = { itemName = it },
-                        label = "Item name"
+                        label = "Item name",
+                        errorMessage = itemNameError
                     )
                     WavesTextField(
                         value = itemQuantity,
                         onValueChange = { itemQuantity = it },
                         label = "Quantity",
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        errorMessage = itemQuantityError
                     )
                     WavesTextField(
                         value = itemUnitPrice,
                         onValueChange = { itemUnitPrice = it },
                         label = "Unit price",
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        errorMessage = itemUnitPriceError
                     )
                     WavesTextField(
                         value = itemTaxRate,
                         onValueChange = { itemTaxRate = it },
                         label = "Tax rate %",
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        errorMessage = itemTaxRateError
                     )
                 }
             },

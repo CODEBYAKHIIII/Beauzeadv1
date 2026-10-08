@@ -60,6 +60,7 @@ import com.example.components.WavesHeader
 import com.example.components.WavesPrimaryButton
 import com.example.components.WavesTextField
 import com.example.components.showDemoToast
+import com.example.util.WavesValidation
 import com.example.ui.theme.AccentCyan
 import com.example.ui.theme.BackgroundColor
 import com.example.ui.theme.BorderGray
@@ -88,9 +89,9 @@ fun SignUpScreen(
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
 
-    val fullNameError = if (hasSubmitted && fullName.isBlank()) "Full name is required" else null
-    val emailError = if (hasSubmitted && (!email.contains("@") || !email.contains("."))) "Enter a valid email" else null
-    val passwordError = if (hasSubmitted && password.length < 6) "Password must be at least 6 characters" else null
+    val fullNameError = if (hasSubmitted) WavesValidation.name(fullName, "Full name") else null
+    val emailError = if (hasSubmitted) WavesValidation.email(email) else null
+    val passwordError = if (hasSubmitted) WavesValidation.password(password) else null
 
     if (errorMessage.isNotEmpty()) {
         StateScreen(
@@ -236,7 +237,11 @@ fun SignUpScreen(
                 text = "CREATE ACCOUNT",
                 onClick = {
                     hasSubmitted = true
-                    if (fullName.isNotBlank() && email.contains("@") && email.contains(".") && password.length >= 6 && agreeToTerms) {
+                    if (WavesValidation.name(fullName, "Full name") == null &&
+                        WavesValidation.email(email) == null &&
+                        WavesValidation.password(password) == null &&
+                        agreeToTerms
+                    ) {
                         isLoading = true
                         coroutineScope.launch {
                             try {

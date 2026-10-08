@@ -49,6 +49,7 @@ import com.example.ui.theme.InputBorderGray
 import com.example.ui.theme.OnPrimary
 import com.example.ui.theme.SurfaceColor
 import com.example.ui.theme.TextSecondary
+import com.example.util.WavesValidation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -57,6 +58,23 @@ enum class InvoiceDefaultSetting(val title: String) {
     CURRENCY("Currency"),
     PAYMENT_TERMS("Payment Terms")
 }
+
+private val INVOICE_PREFIX_REGEX = Regex("^[A-Za-z0-9\\-/]{1,16}$")
+
+private fun validateInvoicePrefix(value: String): String? = when {
+    value.isBlank() -> "Invoice prefix is required"
+    !INVOICE_PREFIX_REGEX.matches(value.trim()) -> "Use letters, numbers, - or / only"
+    else -> null
+}
+
+private fun validateNextInvoiceNumber(value: String): String? = when {
+    value.isBlank() -> "Next invoice number is required"
+    value.any { !it.isDigit() } -> "Next invoice number must be numeric"
+    else -> null
+}
+
+private fun validateDefaultNotes(value: String): String? =
+    if (value.length > 1000) "Notes are too long" else null
 
 @Composable
 fun InvoiceDefaultSettingsScreen(
@@ -88,16 +106,39 @@ fun InvoiceDefaultSettingsScreen(
     var paymentTerms by remember(setting, profile) { mutableStateOf(profile.paymentTerms) }
     var defaultNotes by remember(setting, profile) { mutableStateOf(profile.defaultNotes) }
     var countryMenuExpanded by remember { mutableStateOf(false) }
+    var hasAttemptedSave by remember(setting) { mutableStateOf(false) }
+
+    val prefixError =
+        if (hasAttemptedSave && setting == InvoiceDefaultSetting.PREFIX_NUMBERING) {
+            validateInvoicePrefix(prefix)
+        } else null
+    val nextNumberError =
+        if (hasAttemptedSave && setting == InvoiceDefaultSetting.PREFIX_NUMBERING) {
+            validateNextInvoiceNumber(nextNumber)
+        } else null
+    val paymentTermsError =
+        if (hasAttemptedSave && setting == InvoiceDefaultSetting.PAYMENT_TERMS) {
+            WavesValidation.required(paymentTerms, "Default payment terms")
+        } else null
+    val defaultNotesError =
+        if (hasAttemptedSave && setting == InvoiceDefaultSetting.PAYMENT_TERMS) {
+            validateDefaultNotes(defaultNotes)
+        } else null
 
     fun save() {
-        if (setting == InvoiceDefaultSetting.PREFIX_NUMBERING) {
-            if (prefix.isBlank() || nextNumber.isBlank() || nextNumber.any { !it.isDigit() }) {
-                errorMessage = "Enter a prefix and a numeric next invoice number."
-                return
-            }
+        hasAttemptedSave = true
+        val errors = when (setting) {
+            InvoiceDefaultSetting.PREFIX_NUMBERING -> listOfNotNull(
+                validateInvoicePrefix(prefix),
+                validateNextInvoiceNumber(nextNumber)
+            )
+            InvoiceDefaultSetting.CURRENCY -> emptyList()
+            InvoiceDefaultSetting.PAYMENT_TERMS -> listOfNotNull(
+                WavesValidation.required(paymentTerms, "Default payment terms"),
+                validateDefaultNotes(defaultNotes)
+            )
         }
-        if (setting == InvoiceDefaultSetting.PAYMENT_TERMS && paymentTerms.isBlank()) {
-            errorMessage = "Enter default payment terms."
+        if (errors.isNotEmpty()) {
             return
         }
         coroutineScope.launch {
@@ -172,12 +213,14 @@ fun InvoiceDefaultSettingsScreen(
                             WavesTextField(
                                 value = prefix,
                                 onValueChange = { prefix = it },
-                                label = "Invoice prefix"
+                                label = "Invoice prefix",
+                                errorMessage = prefixError
                             )
                             WavesTextField(
                                 value = nextNumber,
                                 onValueChange = { value -> nextNumber = value.filter(Char::isDigit) },
-                                label = "Next invoice number"
+                                label = "Next invoice number",
+                                errorMessage = nextNumberError
                             )
                             Text(
                                 "The next invoice will be numbered ${prefix}${nextNumber.ifBlank { "001" }}.",
@@ -246,14 +289,16 @@ fun InvoiceDefaultSettingsScreen(
                             WavesTextField(
                                 value = paymentTerms,
                                 onValueChange = { paymentTerms = it },
-                                label = "Default payment terms"
+                                label = "Default payment terms",
+                                errorMessage = paymentTermsError
                             )
                             WavesTextField(
                                 value = defaultNotes,
                                 onValueChange = { defaultNotes = it },
                                 label = "Default invoice notes",
                                 singleLine = false,
-                                maxLines = 3
+                                maxLines = 3,
+                                errorMessage = defaultNotesError
                             )
                         }
                     }

@@ -47,6 +47,7 @@ import com.example.components.WavesHeader
 import com.example.components.WavesPrimaryButton
 import com.example.components.WavesTextField
 import com.example.components.showDemoToast
+import com.example.util.WavesValidation
 import com.example.ui.theme.BackgroundColor
 import com.example.ui.theme.EmeraldInk
 import com.example.ui.theme.TextPrimary
@@ -74,8 +75,8 @@ fun LogInScreen(
     var errorMessage by remember { mutableStateOf("") }
     var unverifiedEmail by remember { mutableStateOf<String?>(null) }
 
-    val emailError = if (hasSubmitted && (!email.contains("@") || !email.contains("."))) "Enter a valid email" else null
-    val passwordError = if (hasSubmitted && password.isEmpty()) "Password is required" else null
+    val emailError = if (hasSubmitted) WavesValidation.email(email) else null
+    val passwordError = if (hasSubmitted && password.isBlank()) "Password is required" else null
 
     if (isLoading) {
         StateScreen(
@@ -183,7 +184,7 @@ fun LogInScreen(
                 text = "LOG IN",
                 onClick = {
                     hasSubmitted = true
-                    if (email.contains("@") && email.contains(".") && password.isNotEmpty()) {
+                    if (WavesValidation.email(email) == null && password.isNotBlank()) {
                         isLoading = true
                         coroutineScope.launch {
                             try {

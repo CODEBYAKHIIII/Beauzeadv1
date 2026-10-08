@@ -44,6 +44,7 @@ import com.example.data.authErrorMessage
 import com.example.components.StateScreen
 import com.example.components.StateType
 import com.example.components.WavesTextField
+import com.example.util.WavesValidation
 import com.example.ui.theme.AccentCyan
 import com.example.ui.theme.BackgroundColor
 import com.example.ui.theme.ButtonTextStyle
@@ -67,8 +68,7 @@ fun ForgotPasswordScreen(
     var requestSent by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
 
-    val isEmailValid = email.isNotBlank() && email.contains("@") && email.contains(".")
-    val emailError = if (hasSubmitted && !isEmailValid) "Enter a valid email" else null
+    val emailError = if (hasSubmitted) WavesValidation.email(email) else null
 
     if (requestSent) {
         StateScreen(
@@ -188,7 +188,7 @@ fun ForgotPasswordScreen(
             Button(
                 onClick = {
                     hasSubmitted = true
-                    if (isEmailValid) {
+                    if (WavesValidation.email(email) == null) {
                         isLoading = true
                         coroutineScope.launch {
                             try {

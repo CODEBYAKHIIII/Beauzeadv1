@@ -29,7 +29,7 @@ object WavesValidation {
         "^(https?://)?([A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(/[^\\s]*)?$"
     )
     private val POSTAL_REGEX = Regex("^[A-Za-z0-9][A-Za-z0-9 \\-]{2,9}$")
-    private val NAME_REGEX = Regex("^[\\p{L}][\\p{L} .,'&()/-]{1,59}$")
+    private val NAME_REGEX = Regex("^[\\p{L}\\p{N}][\\p{L}\\p{N} .,'&()/-]{1,59}$")
     private val ALNUM_MIN_4 = Regex("^[A-Za-z0-9][A-Za-z0-9 \\-/.]{3,}$")
 
     // ---------- generic ----------
@@ -255,7 +255,7 @@ data class TaxIdType(
     }
 }
 
-private data class CountryTaxTypes(val country: String, val types: List<TaxIdType>)
+data class CountryTaxTypes(val country: String, val types: List<TaxIdType>)
 
 /**
  * Catalog of per-country tax identification types.

@@ -57,6 +57,7 @@ import com.example.ui.theme.InputBorderGray
 import com.example.ui.theme.OnPrimary
 import com.example.ui.theme.SurfaceColor
 import com.example.ui.theme.TextSecondary
+import com.example.util.WavesValidation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -116,7 +117,13 @@ fun AddEditClientScreen(
 
     fun saveClient() {
         hasSubmitted = true
-        if (name.isBlank()) return
+        val nameError = WavesValidation.name(name, "Client name")
+        val emailError = WavesValidation.email(email, required = false)
+        val phoneError = WavesValidation.phone(phone, required = false)
+        val addressError = WavesValidation.address(addressLine1, "Address line 1", required = false)
+        val postalError = WavesValidation.postalCode(postalCode, required = false)
+        val taxError = if (taxNumber.isNotBlank()) WavesValidation.taxId(taxNumber, "Client tax number") else null
+        if (listOfNotNull(nameError, emailError, phoneError, addressError, postalError, taxError).isNotEmpty()) return
         coroutineScope.launch {
             isSaving = true
             errorMessage = ""
@@ -216,7 +223,7 @@ fun AddEditClientScreen(
             SectionHeader(title = "BASIC INFORMATION")
             WavesCard {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    val nameError = if (hasSubmitted && name.isBlank()) "Client name is required" else null
+                    val nameError = if (hasSubmitted) WavesValidation.name(name, "Client name") else null
                     WavesTextField(
                         value = name,
                         onValueChange = { name = it },
@@ -225,21 +232,25 @@ fun AddEditClientScreen(
                         leadingIcon = Icons.Filled.Person,
                         errorMessage = nameError
                     )
+                    val emailError = if (hasSubmitted) WavesValidation.email(email, required = false) else null
                     WavesTextField(
                         value = email,
                         onValueChange = { email = it },
                         label = "Email Address",
                         placeholder = "rahul@email.com",
                         leadingIcon = Icons.Filled.Email,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                        errorMessage = emailError
                     )
+                    val phoneError = if (hasSubmitted) WavesValidation.phone(phone, required = false) else null
                     WavesTextField(
                         value = phone,
                         onValueChange = { phone = it },
                         label = "Phone Number",
                         placeholder = "+91 98765 43210",
                         leadingIcon = Icons.Filled.Phone,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        errorMessage = phoneError
                     )
                 }
             }
@@ -248,11 +259,13 @@ fun AddEditClientScreen(
             SectionHeader(title = "BILLING ADDRESS")
             WavesCard {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    val addressError = if (hasSubmitted) WavesValidation.address(addressLine1, "Address line 1", required = false) else null
                     WavesTextField(
                         value = addressLine1,
                         onValueChange = { addressLine1 = it },
                         label = "Address Line 1",
-                        placeholder = "123 Commercial St"
+                        placeholder = "123 Commercial St",
+                        errorMessage = addressError
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         WavesTextField(
@@ -271,12 +284,14 @@ fun AddEditClientScreen(
                         )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        val postalError = if (hasSubmitted) WavesValidation.postalCode(postalCode, required = false) else null
                         WavesTextField(
                             value = postalCode,
                             onValueChange = { postalCode = it },
                             label = "Postal Code",
                             placeholder = "400001",
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            errorMessage = postalError
                         )
                         Box(modifier = Modifier.weight(1f)) {
                             Column {
@@ -331,11 +346,13 @@ fun AddEditClientScreen(
             // Section TAX
             SectionHeader(title = "TAX DETAILS")
             WavesCard {
+                val taxNumberError = if (hasSubmitted && taxNumber.isNotBlank()) WavesValidation.taxId(taxNumber, "Client tax number") else null
                 WavesTextField(
                     value = taxNumber,
                     onValueChange = { taxNumber = it },
                     label = "Tax / GSTIN Number",
-                    placeholder = "27AAAAA0000A1Z5"
+                    placeholder = "27AAAAA0000A1Z5",
+                    errorMessage = taxNumberError
                 )
             }
 

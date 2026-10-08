@@ -35,6 +35,7 @@ import com.example.ui.theme.EmeraldInk
 import com.example.ui.theme.SurfaceColor
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import com.example.util.WavesValidation
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,6 +54,24 @@ fun RecordPaymentBottomSheet(
     var referenceNumber by remember { mutableStateOf("UPI98234710") }
     var paymentDate by remember { mutableStateOf("04 Oct 2026") }
     var paymentNotes by remember { mutableStateOf("Received via Google Pay") }
+    var hasAttemptedSave by remember { mutableStateOf(false) }
+
+    // Inline validation errors (validate-on-save, surfaced via WavesTextField errorMessage)
+    val parsedAmountValue = amount.trim().replace(",", "").toDoubleOrNull()
+    val amountError = if (hasAttemptedSave) {
+        WavesValidation.firstError(
+            WavesValidation.amount(amount, "Amount"),
+            if (parsedAmountValue != null && parsedAmountValue > balanceDue) {
+                "Amount exceeds the outstanding balance"
+            } else null
+        )
+    } else null
+    val paymentDateError = if (hasAttemptedSave) {
+        WavesValidation.dateText(paymentDate, "Payment date")
+    } else null
+    val referenceError = if (hasAttemptedSave && referenceNumber.trim().length > 200) {
+        "Reference is too long (max 200 characters)"
+    } else null
 
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
@@ -80,7 +99,8 @@ fun RecordPaymentBottomSheet(
                 value = amount,
                 onValueChange = { amount = it },
                 label = "Payment Amount (₹)",
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                errorMessage = amountError
             )
 
             // Method chips: [Cash] [Bank] [UPI] [Card] [Other]
@@ -111,14 +131,16 @@ fun RecordPaymentBottomSheet(
                 value = referenceNumber,
                 onValueChange = { referenceNumber = it },
                 label = "Reference / Transaction ID",
-                placeholder = "e.g. UTR / Check # / Ref"
+                placeholder = "e.g. UTR / Check # / Ref",
+                errorMessage = referenceError
             )
 
             // Date field
             WavesTextField(
                 value = paymentDate,
                 onValueChange = { paymentDate = it },
-                label = "Payment Date"
+                label = "Payment Date",
+                errorMessage = paymentDateError
             )
 
             // Notes field
@@ -137,10 +159,13 @@ fun RecordPaymentBottomSheet(
             WavesPrimaryButton(
                 text = "SAVE PAYMENT",
                 onClick = {
-                    val parsedAmount = amount.toDoubleOrNull() ?: balanceDue
-                    showDemoToast(context, "Payment of ₹$parsedAmount recorded successfully!")
-                    onPaymentSaved(parsedAmount, selectedMethod)
-                    onDismissRequest()
+                    hasAttemptedSave = true
+                    if (amountError == null && paymentDateError == null && referenceError == null) {
+                        val parsedAmount = amount.toDoubleOrNull() ?: balanceDue
+                        showDemoToast(context, "Payment of ₹$parsedAmount recorded successfully!")
+                        onPaymentSaved(parsedAmount, selectedMethod)
+                        onDismissRequest()
+                    }
                 }
             )
 
