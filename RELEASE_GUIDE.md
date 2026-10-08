@@ -3,7 +3,7 @@
 ## App and Firebase identity
 
 - Android application ID / Play Console package: `com.waves.androidapp`
-- Current release version: `1.2` (`versionCode` 3; the next Play release must use a code greater than 3 and greater than any code already used on any track)
+- Current release version: `1.0.2` (`versionCode` 5; the next Play release must use a code greater than 5 and greater than any code already used on any track)
 - Firebase Android app: `1:1088277592046:android:1fccb895b44a59bd6f80ff`
 - Firebase configuration: `app/google-services.json`
 - Android Gradle namespace remains `com.example`; it is separate from the installed application ID and keeps existing source packages stable.
@@ -48,7 +48,7 @@ Register the upload certificate fingerprint where required by Firebase/Google se
 
 ## Build signed release APK and AAB
 
-The current release configuration is `versionName = "1.2"` and `versionCode = 3` in `app/build.gradle.kts`. Increment the code before each Play upload, and first confirm it is greater than every code already used in Play Console. The repository cannot query Play Console's track history.
+The current release configuration is `versionName = "1.0.2"` and `versionCode = 5` in `app/build.gradle.kts`. Increment the code before each Play upload, and first confirm it is greater than every code already used in Play Console. The repository cannot query Play Console's track history.
 
 The following is the command used to produce the current release in this workspace. It explicitly selects JDK 21, uses the ignored upload-key files, and limits Gradle to one worker with a 1 GiB heap because the default parallel build caused its daemon to be terminated in this Codespace. Adjust `JAVA_HOME` if JDK 21 is installed elsewhere. Never add password values to the command itself:
 
@@ -76,7 +76,7 @@ Expected outputs:
 - APK: `app/build/outputs/apk/release/app-release.apk`
 - Android App Bundle: `app/build/outputs/bundle/release/app-release.aab`
 
-Artifacts under `app/build/outputs/` are local build outputs and are not committed. For the current version 1.2 build:
+Artifacts under `app/build/outputs/` are local build outputs and are not committed. For the current version 1.0.2 (versionCode 5) build:
 
 - Package: `com.waves.androidapp`
 - Version code/name: `3` / `1.2`
