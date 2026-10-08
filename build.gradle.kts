@@ -4,7 +4,6 @@ plugins {
   id("com.android.library") version "8.10.1" apply false
   id("org.jetbrains.kotlin.android") version "2.2.20" apply false
   id("org.jetbrains.kotlin.plugin.compose") version "2.2.20" apply false
-  alias(libs.plugins.google.devtools.ksp) apply false
   alias(libs.plugins.secrets) apply false
   alias(libs.plugins.google.services) apply false
 }
