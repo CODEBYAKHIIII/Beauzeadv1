@@ -64,8 +64,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -295,33 +297,57 @@ fun LogoCropScreen(
 }
 
 private fun decodeOrientedBitmap(context: Context, uri: Uri): Bitmap {
-    val orientation = context.contentResolver.openInputStream(uri)?.use { stream ->
-        ExifInterface(stream).getAttributeInt(
+    // Read the image payload ONCE into memory. Repeated openInputStream calls
+    // fail on several providers (cloud-only gallery photos, chat app documents)
+    // and were the usual cause of "Unable to open the selected image".
+    val bytes = try {
+        context.contentResolver.openInputStream(uri)?.use { stream -> stream.readBytes() }
+            ?: throw IllegalStateException("Unable to open the selected image. Please pick it again.")
+    } catch (exception: SecurityException) {
+        throw IllegalStateException(
+            "Access to the selected image was denied. Please pick it again.",
+            exception
+        )
+    } catch (exception: FileNotFoundException) {
+        throw IllegalStateException(
+            "The selected image is no longer available. Please pick it again.",
+            exception
+        )
+    }
+    if (bytes.isEmpty()) {
+        throw IllegalStateException("The selected image is empty. Please pick a different image.")
+    }
+
+    val orientation = try {
+        ExifInterface(ByteArrayInputStream(bytes)).getAttributeInt(
             ExifInterface.TAG_ORIENTATION,
             ExifInterface.ORIENTATION_NORMAL
         )
-    } ?: ExifInterface.ORIENTATION_NORMAL
+    } catch (_: Exception) {
+        ExifInterface.ORIENTATION_NORMAL
+    }
 
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    context.contentResolver.openInputStream(uri)?.use {
-        BitmapFactory.decodeStream(it, null, bounds)
-    } ?: error("Unable to open the selected image.")
-    require(bounds.outWidth > 0 && bounds.outHeight > 0) { "The selected file is not a supported image." }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    require(bounds.outWidth > 0 && bounds.outHeight > 0) {
+        "The selected file is not a supported image. Use a JPG, PNG or WebP image."
+    }
 
     var sampleSize = 1
     while (max(bounds.outWidth, bounds.outHeight) / sampleSize > MAX_DECODE_DIMENSION) {
         sampleSize *= 2
     }
-    val decoded = context.contentResolver.openInputStream(uri)?.use { stream ->
-        BitmapFactory.decodeStream(
-            stream,
-            null,
-            BitmapFactory.Options().apply {
-                inSampleSize = sampleSize
-                inPreferredConfig = Bitmap.Config.ARGB_8888
-            }
-        )
-    } ?: error("Unable to decode the selected image.")
+    val decoded = BitmapFactory.decodeByteArray(
+        bytes,
+        0,
+        bytes.size,
+        BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+    ) ?: throw IllegalStateException(
+        "Unable to decode the selected image. Please pick a different image."
+    )
 
     val transform = Matrix()
     when (orientation) {
@@ -384,6 +410,9 @@ private fun cropToSquare(
     )
 
     val outputFile = File.createTempFile("waves-business-logo-", ".png", context.cacheDir)
+    require(outputFile.setWritable(true, false) && outputFile.setReadable(true, false)) {
+        "The cropped image could not be saved."
+    }
     try {
         FileOutputStream(outputFile).use { stream ->
             check(outputBitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) {

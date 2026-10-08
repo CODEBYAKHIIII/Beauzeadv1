@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,9 +25,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -47,16 +48,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.example.data.FirestoreDataRepository
-import com.example.data.FirestoreState
-import coil.compose.AsyncImage
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.R
 import com.example.components.StateScreen
 import com.example.components.StateType
@@ -65,6 +63,8 @@ import com.example.components.WavesHeader
 import com.example.components.WavesPrimaryButton
 import com.example.components.WavesTextField
 import com.example.components.showDemoToast
+import com.example.data.FirestoreDataRepository
+import com.example.data.FirestoreState
 import com.example.ui.theme.AccentCyan
 import com.example.ui.theme.BackgroundColor
 import com.example.ui.theme.EmeraldInk
@@ -72,8 +72,12 @@ import com.example.ui.theme.InputBorderGray
 import com.example.ui.theme.OnPrimary
 import com.example.ui.theme.SurfaceColor
 import com.example.ui.theme.TextSecondary
+import com.example.util.WavesTaxCatalog
+import com.example.util.WavesValidation
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.io.File
 
 @Composable
 fun BusinessProfileScreen(
@@ -99,6 +103,7 @@ fun BusinessProfileScreen(
     var isSaving by remember { mutableStateOf(false) }
     var showSuccess by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
+    var hasAttemptedSave by remember { mutableStateOf(false) }
 
     // Business info
     var businessName by remember { mutableStateOf(initial.name) }
@@ -106,10 +111,28 @@ fun BusinessProfileScreen(
     var logoUrl by remember { mutableStateOf(initial.logoUrl) }
     var isUploadingLogo by remember { mutableStateOf(false) }
     var logoToCrop by remember { mutableStateOf<Uri?>(null) }
+    var pendingPickFile by remember { mutableStateOf<File?>(null) }
+    var logoErrorMessage by remember { mutableStateOf<String?>(null) }
 
     val logoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
-            logoToCrop = uri
+            // Copy into app cache immediately. Transient picker URIs can become
+            // unreadable later (provider release, process death), which used to
+            // surface as "Unable to open the selected image" on the crop screen.
+            coroutineScope.launch {
+                val copied = withContext(Dispatchers.IO) {
+                    runCatching { copyUriToCache(context, uri) }.getOrNull()
+                }
+                if (copied != null) {
+                    pendingPickFile?.delete()
+                    pendingPickFile = copied
+                    logoErrorMessage = null
+                    logoToCrop = Uri.fromFile(copied)
+                } else {
+                    logoErrorMessage =
+                        "Could not read the selected image. Please pick a different image."
+                }
+            }
         }
     }
 
@@ -127,13 +150,31 @@ fun BusinessProfileScreen(
 
     var country by remember { mutableStateOf(initial.country) }
     var countryDropdownOpen by remember { mutableStateOf(false) }
-    val countries = listOf(
-        "India", "USA", "UK", "UAE", "Australia", "Canada",
-        "Germany", "Singapore", "Nigeria", "Kenya",
-        "South Africa", "Brazil"
-    )
+    val countries = WavesTaxCatalog.countries
+
+    // ---- inline validation (validate on save, show inline) ----
+    val businessNameError = if (hasAttemptedSave) WavesValidation.name(businessName, "Business name") else null
+    val emailError = if (hasAttemptedSave) WavesValidation.email(email) else null
+    val phoneError = if (hasAttemptedSave) WavesValidation.phone(phone) else null
+    val websiteError = if (hasAttemptedSave) WavesValidation.website(website) else null
+    val addressLine1Error = if (hasAttemptedSave) WavesValidation.address(addressLine1, "Address Line 1") else null
+    val cityError = if (hasAttemptedSave) WavesValidation.name(city.ifBlank { "" }, "City") else null
+    val postalCodeError = if (hasAttemptedSave) WavesValidation.postalCode(postalCode) else null
+    val countryError = if (hasAttemptedSave && country.isBlank()) "Country is required" else null
+
+    fun dismissLogoFlow() {
+        logoToCrop = null
+        pendingPickFile?.delete()
+        pendingPickFile = null
+    }
 
     fun saveProfile() {
+        hasAttemptedSave = true
+        val hasErrors = listOf(
+            businessNameError, emailError, phoneError, websiteError,
+            addressLine1Error, cityError, postalCodeError, countryError
+        ).any { it != null }
+        if (hasErrors) return
         coroutineScope.launch {
             isSaving = true
             errorMessage = ""
@@ -169,13 +210,13 @@ fun BusinessProfileScreen(
     if (cropSourceUri != null) {
         LogoCropScreen(
             sourceUri = cropSourceUri,
-            onNavigateBack = { logoToCrop = null },
+            onNavigateBack = ::dismissLogoFlow,
             onChooseAnotherImage = { logoPicker.launch("image/*") },
             onSaveCroppedImage = { croppedUri ->
                 isUploadingLogo = true
                 try {
                     logoUrl = FirestoreDataRepository.uploadBusinessLogo(croppedUri)
-                    logoToCrop = null
+                    dismissLogoFlow()
                 } finally {
                     croppedUri.path?.let { java.io.File(it).delete() }
                     isUploadingLogo = false
@@ -298,6 +339,14 @@ fun BusinessProfileScreen(
                     color = EmeraldInk,
                     fontWeight = FontWeight.Medium
                 )
+                if (logoErrorMessage != null) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = logoErrorMessage.orEmpty(),
+                        fontSize = 12.sp,
+                        color = Color(0xFFDC2626)
+                    )
+                }
             }
 
             // ===== BUSINESS INFO =====
@@ -307,7 +356,8 @@ fun BusinessProfileScreen(
                     WavesTextField(
                         value = businessName,
                         onValueChange = { businessName = it },
-                        label = "Business Name *"
+                        label = "Business Name *",
+                        errorMessage = businessNameError
                     )
                     WavesTextField(
                         value = tagline,
@@ -325,18 +375,22 @@ fun BusinessProfileScreen(
                         value = email,
                         onValueChange = { email = it },
                         label = "Email *",
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                        errorMessage = emailError
                     )
                     WavesTextField(
                         value = phone,
                         onValueChange = { phone = it },
                         label = "Mobile Number *",
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        errorMessage = phoneError
                     )
                     WavesTextField(
                         value = website,
                         onValueChange = { website = it },
-                        label = "Website"
+                        label = "Website",
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                        errorMessage = websiteError
                     )
                 }
             }
@@ -348,7 +402,8 @@ fun BusinessProfileScreen(
                     WavesTextField(
                         value = addressLine1,
                         onValueChange = { addressLine1 = it },
-                        label = "Address Line 1 *"
+                        label = "Address Line 1 *",
+                        errorMessage = addressLine1Error
                     )
                     WavesTextField(
                         value = addressLine2,
@@ -360,7 +415,8 @@ fun BusinessProfileScreen(
                             value = city,
                             onValueChange = { city = it },
                             label = "City *",
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            errorMessage = cityError
                         )
                         WavesTextField(
                             value = state,
@@ -374,7 +430,8 @@ fun BusinessProfileScreen(
                             value = postalCode,
                             onValueChange = { postalCode = it },
                             label = "Postal Code *",
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            errorMessage = postalCodeError
                         )
                         Box(modifier = Modifier.weight(1f)) {
                             Column {
@@ -394,11 +451,17 @@ fun BusinessProfileScreen(
                                         .height(56.dp)
                                         .clickable { countryDropdownOpen = true },
                                     shape = RoundedCornerShape(12.dp),
+                                    isError = countryError != null,
                                     trailingIcon = {
                                         IconButton(onClick = { countryDropdownOpen = true }) {
                                             Icon(
                                                 Icons.Filled.ArrowDropDown,
-                                                contentDescription = null
+                                                contentDescription = null,
+                                                tint = if (countryError != null) {
+                                                    Color(0xFFDC2626)
+                                                } else {
+                                                    Color.Unspecified
+                                                }
                                             )
                                         }
                                     },
@@ -406,7 +469,8 @@ fun BusinessProfileScreen(
                                         focusedContainerColor = SurfaceColor,
                                         unfocusedContainerColor = SurfaceColor,
                                         focusedBorderColor = AccentCyan,
-                                        unfocusedBorderColor = InputBorderGray
+                                        unfocusedBorderColor = InputBorderGray,
+                                        errorBorderColor = Color(0xFFDC2626)
                                     )
                                 )
                                 DropdownMenu(
@@ -422,6 +486,14 @@ fun BusinessProfileScreen(
                                             }
                                         )
                                     }
+                                }
+                                if (countryError != null) {
+                                    Text(
+                                        text = countryError.orEmpty(),
+                                        fontSize = 12.sp,
+                                        color = Color(0xFFDC2626),
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
                                 }
                             }
                         }
@@ -450,4 +522,30 @@ fun SectionHeader(title: String) {
         letterSpacing = 1.sp,
         modifier = Modifier.padding(start = 4.dp, top = 4.dp)
     )
+}
+
+/**
+ * Copies a picked content URI into the app cache so the crop flow no longer
+ * depends on the transient read permission granted by the system picker.
+ * Returns null when the content cannot be read (unsupported provider, revoked
+ * grant, cloud-only file that failed to download, etc.).
+ */
+private fun copyUriToCache(context: android.content.Context, source: Uri): File? {
+    val output = File.createTempFile("waves-logo-pick-", ".img", context.cacheDir)
+    try {
+        context.contentResolver.openInputStream(source)?.use { input ->
+            output.outputStream().use { target -> input.copyTo(target) }
+        } ?: run {
+            output.delete()
+            return null
+        }
+        if (output.length() == 0L) {
+            output.delete()
+            return null
+        }
+        return output
+    } catch (exception: Exception) {
+        output.delete()
+        throw exception
+    }
 }

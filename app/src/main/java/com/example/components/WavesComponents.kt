@@ -320,7 +320,8 @@ fun WavesTextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     singleLine: Boolean = true,
     maxLines: Int = 1,
-    errorMessage: String? = null
+    errorMessage: String? = null,
+    enabled: Boolean = true
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val isError = !errorMessage.isNullOrEmpty()
@@ -349,12 +350,13 @@ fun WavesTextField(
             text = label,
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
-            color = Color(0xFF000000),
+            color = if (enabled) Color(0xFF000000) else Color(0xFF9CA3AF),
             modifier = Modifier.padding(bottom = 6.dp)
         )
         OutlinedTextField(
             value = value,
             onValueChange = onValueChange,
+            enabled = enabled,
             placeholder = placeholder?.let {
                 {
                     Text(

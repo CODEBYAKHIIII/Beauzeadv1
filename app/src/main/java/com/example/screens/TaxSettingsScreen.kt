@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -36,18 +37,19 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.components.StateScreen
+import com.example.components.StateType
 import com.example.components.WavesCard
 import com.example.components.WavesHeader
 import com.example.components.WavesPrimaryButton
 import com.example.components.WavesTextField
 import com.example.components.showDemoToast
-import com.example.components.StateScreen
-import com.example.components.StateType
 import com.example.data.FirestoreDataRepository
 import com.example.data.FirestoreState
 import com.example.ui.theme.AccentCyan
@@ -57,35 +59,20 @@ import com.example.ui.theme.InputBorderGray
 import com.example.ui.theme.OnPrimary
 import com.example.ui.theme.SurfaceColor
 import com.example.ui.theme.TextSecondary
+import com.example.util.TaxIdType
+import com.example.util.WavesTaxCatalog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
- * Country → Tax label + tax number format hint.
- * Label: what the tax is called in that country.
- * Format: what the number looks like (used as placeholder/helper).
+ * Tax Settings.
+ *
+ * Country and Tax Type are both strict dropdowns — the tax label is never
+ * typed by hand. Each country offers its own tax identification types
+ * (e.g. India -> GSTIN / PAN / No Tax, USA -> EIN / SSN / No Tax), and the
+ * tax number is validated against the selected type before saving.
+ * "No Tax" clears the number so nothing is printed on invoices.
  */
-private data class CountryTax(
-    val country: String,
-    val label: String,
-    val formatHint: String
-)
-
-private val countryTaxMap = listOf(
-    CountryTax("India", "GSTIN / PAN", "22AAAAA0000A1Z5"),
-    CountryTax("UK", "VAT / UTR / NINO", "GB123456789"),
-    CountryTax("USA", "EIN / SSN", "12-3456789"),
-    CountryTax("UAE", "TRN", "100123456700003"),
-    CountryTax("Australia", "ABN / TFN", "12 345 678 901"),
-    CountryTax("Canada", "BN / SIN", "123456789RT0001"),
-    CountryTax("Germany", "USt-IdNr / Steuernummer", "DE123456789"),
-    CountryTax("Singapore", "UEN / GST Reg No", "202012345A"),
-    CountryTax("Nigeria", "TIN / VAT Reg No", "12345678-0001"),
-    CountryTax("Kenya", "KRA PIN", "P051234567X"),
-    CountryTax("South Africa", "VAT Reg No", "4123456789"),
-    CountryTax("Brazil", "CNPJ / CPF", "12.345.678/0001-90")
-)
-
 @Composable
 fun TaxSettingsScreen(
     onNavigateBack: () -> Unit,
@@ -109,15 +96,55 @@ fun TaxSettingsScreen(
 
     var isSaving by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
-    var selectedCountry by remember { mutableStateOf(profile.country) }
-    var countryDropdownOpen by remember { mutableStateOf(false) }
+    var hasAttemptedSave by remember { mutableStateOf(false) }
 
-    val initial = countryTaxMap.find { it.country == selectedCountry } ?: countryTaxMap.first()
-    var taxLabel by remember { mutableStateOf(profile.taxLabel.ifBlank { initial.label }) }
-    var taxFormatHint by remember { mutableStateOf(initial.formatHint) }
+    // Restore previously saved country + type; blank when never configured.
+    val savedCountryConfig = WavesTaxCatalog.configFor(profile.country)
+    var selectedCountry by remember {
+        mutableStateOf(savedCountryConfig?.country.orEmpty())
+    }
+    var selectedTypeId by remember {
+        mutableStateOf(
+            if (savedCountryConfig != null && profile.taxLabel.isNotBlank()) {
+                WavesTaxCatalog.typeIdFromLabel(savedCountryConfig.country, profile.taxLabel)
+            } else {
+                null
+            }
+        )
+    }
     var taxNumber by remember { mutableStateOf(profile.taxNumber) }
 
+    var countryDropdownOpen by remember { mutableStateOf(false) }
+    var typeDropdownOpen by remember { mutableStateOf(false) }
+
+    val availableTypes = if (selectedCountry.isBlank()) {
+        emptyList()
+    } else {
+        WavesTaxCatalog.typesFor(selectedCountry)
+    }
+    val selectedType = availableTypes.find { it.id == selectedTypeId }
+
+    // ---- validation (on save, shown inline) ----
+    val countryError = if (hasAttemptedSave && selectedCountry.isBlank()) {
+        "Country is required"
+    } else {
+        null
+    }
+    val typeError = if (hasAttemptedSave && selectedType == null) {
+        "Tax type is required"
+    } else {
+        null
+    }
+    val taxNumberError = if (hasAttemptedSave) {
+        selectedType?.validate(taxNumber)
+    } else {
+        null
+    }
+
     fun saveTaxSettings() {
+        hasAttemptedSave = true
+        if (selectedCountry.isBlank() || selectedType == null) return
+        if (selectedType.validate(taxNumber) != null) return
         coroutineScope.launch {
             isSaving = true
             errorMessage = ""
@@ -125,8 +152,8 @@ fun TaxSettingsScreen(
                 FirestoreDataRepository.saveBusinessProfile(
                     profile.copy(
                         country = selectedCountry,
-                        taxLabel = taxLabel,
-                        taxNumber = taxNumber
+                        taxLabel = selectedType.label,
+                        taxNumber = if (selectedType.isNoTax) "" else taxNumber.trim().uppercase()
                     )
                 )
                 showDemoToast(context, "Tax settings saved successfully!")
@@ -156,12 +183,17 @@ fun TaxSettingsScreen(
         return
     }
 
-    fun updateDefaultsForCountry(country: String) {
-        val config = countryTaxMap.find { it.country == country } ?: return
+    fun onCountrySelected(country: String) {
         selectedCountry = country
-        taxLabel = config.label
-        taxFormatHint = config.formatHint
-        taxNumber = ""  // clear so user enters new value
+        selectedTypeId = null
+        taxNumber = ""
+        countryDropdownOpen = false
+    }
+
+    fun onTaxTypeSelected(type: TaxIdType) {
+        if (type.id != selectedTypeId) taxNumber = ""
+        selectedTypeId = type.id
+        typeDropdownOpen = false
     }
 
     Scaffold(
@@ -208,7 +240,9 @@ fun TaxSettingsScreen(
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "Country selection auto-fills the tax label and format hint. You can override the label if needed.",
+                        text = "Pick your country, then choose the tax type it uses — " +
+                            "India offers GSTIN, PAN or No Tax. The number is checked " +
+                            "before saving. Choose \"No Tax\" to keep invoices tax-free.",
                         fontSize = 13.sp,
                         color = TextSecondary,
                         lineHeight = 18.sp
@@ -220,71 +254,198 @@ fun TaxSettingsScreen(
             SectionHeader(title = "TAX CONFIGURATION")
             WavesCard {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    // Country dropdown
-                    Box {
-                        Column {
-                            Text(
-                                text = "Country",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = TextSecondary,
-                                modifier = Modifier.padding(bottom = 6.dp)
-                            )
-                            OutlinedTextField(
-                                value = selectedCountry,
-                                onValueChange = {},
-                                readOnly = true,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(56.dp)
-                                    .clickable { countryDropdownOpen = true },
-                                shape = RoundedCornerShape(12.dp),
-                                trailingIcon = {
-                                    IconButton(onClick = { countryDropdownOpen = true }) {
-                                        Icon(
-                                            Icons.Filled.ArrowDropDown,
-                                            contentDescription = null
-                                        )
-                                    }
-                                },
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedContainerColor = SurfaceColor,
-                                    unfocusedContainerColor = SurfaceColor,
-                                    focusedBorderColor = AccentCyan,
-                                    unfocusedBorderColor = InputBorderGray
+                    // ---- Country dropdown ----
+                    Column {
+                        Text(
+                            text = "Country",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(bottom = 6.dp)
+                        )
+                        OutlinedTextField(
+                            value = selectedCountry,
+                            onValueChange = {},
+                            readOnly = true,
+                            enabled = true,
+                            placeholder = {
+                                Text(
+                                    "Select country",
+                                    color = TextSecondary,
+                                    fontSize = 14.sp
                                 )
-                            )
-                            DropdownMenu(
-                                expanded = countryDropdownOpen,
-                                onDismissRequest = { countryDropdownOpen = false }
-                            ) {
-                                countryTaxMap.forEach { item ->
-                                    DropdownMenuItem(
-                                        text = { Text(item.country) },
-                                        onClick = {
-                                            updateDefaultsForCountry(item.country)
-                                            countryDropdownOpen = false
+                            },
+                            isError = countryError != null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp)
+                                .clickable { countryDropdownOpen = true },
+                            shape = RoundedCornerShape(12.dp),
+                            trailingIcon = {
+                                IconButton(onClick = { countryDropdownOpen = true }) {
+                                    Icon(
+                                        Icons.Filled.ArrowDropDown,
+                                        contentDescription = "Select country",
+                                        tint = if (countryError != null) {
+                                            Color(0xFFDC2626)
+                                        } else {
+                                            Color.Unspecified
                                         }
                                     )
                                 }
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = SurfaceColor,
+                                unfocusedContainerColor = SurfaceColor,
+                                focusedBorderColor = AccentCyan,
+                                unfocusedBorderColor = InputBorderGray,
+                                errorBorderColor = Color(0xFFDC2626)
+                            )
+                        )
+                        DropdownMenu(
+                            expanded = countryDropdownOpen,
+                            onDismissRequest = { countryDropdownOpen = false }
+                        ) {
+                            WavesTaxCatalog.countries.forEach { country ->
+                                DropdownMenuItem(
+                                    text = { Text(country) },
+                                    leadingIcon = if (country == selectedCountry) {
+                                        {
+                                            Icon(
+                                                Icons.Filled.Check,
+                                                contentDescription = null,
+                                                tint = EmeraldInk
+                                            )
+                                        }
+                                    } else {
+                                        null
+                                    },
+                                    onClick = { onCountrySelected(country) }
+                                )
                             }
+                        }
+                        if (countryError != null) {
+                            Text(
+                                text = countryError.orEmpty(),
+                                fontSize = 12.sp,
+                                color = Color(0xFFDC2626),
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
                         }
                     }
 
-                    // Tax label (auto-filled, editable)
-                    WavesTextField(
-                        value = taxLabel,
-                        onValueChange = { taxLabel = it },
-                        label = "Tax Label"
-                    )
+                    // ---- Tax type dropdown (country-specific options) ----
+                    Column {
+                        Text(
+                            text = "Tax Type",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(bottom = 6.dp)
+                        )
+                        OutlinedTextField(
+                            value = selectedType?.label.orEmpty(),
+                            onValueChange = {},
+                            readOnly = true,
+                            enabled = selectedCountry.isNotBlank(),
+                            placeholder = {
+                                Text(
+                                    if (selectedCountry.isBlank()) {
+                                        "Select a country first"
+                                    } else {
+                                        "Select tax type"
+                                    },
+                                    color = TextSecondary,
+                                    fontSize = 14.sp
+                                )
+                            },
+                            isError = typeError != null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp)
+                                .clickable(enabled = selectedCountry.isNotBlank()) {
+                                    typeDropdownOpen = true
+                                },
+                            shape = RoundedCornerShape(12.dp),
+                            trailingIcon = {
+                                IconButton(
+                                    enabled = selectedCountry.isNotBlank(),
+                                    onClick = { typeDropdownOpen = true }
+                                ) {
+                                    Icon(
+                                        Icons.Filled.ArrowDropDown,
+                                        contentDescription = "Select tax type",
+                                        tint = if (typeError != null) {
+                                            Color(0xFFDC2626)
+                                        } else {
+                                            Color.Unspecified
+                                        }
+                                    )
+                                }
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = SurfaceColor,
+                                unfocusedContainerColor = SurfaceColor,
+                                focusedBorderColor = AccentCyan,
+                                unfocusedBorderColor = InputBorderGray,
+                                errorBorderColor = Color(0xFFDC2626),
+                                disabledContainerColor = SurfaceColor,
+                                disabledBorderColor = InputBorderGray
+                            )
+                        )
+                        DropdownMenu(
+                            expanded = typeDropdownOpen,
+                            onDismissRequest = { typeDropdownOpen = false }
+                        ) {
+                            availableTypes.forEach { type ->
+                                DropdownMenuItem(
+                                    text = { Text(type.label) },
+                                    leadingIcon = if (type.id == selectedTypeId) {
+                                        {
+                                            Icon(
+                                                Icons.Filled.Check,
+                                                contentDescription = null,
+                                                tint = EmeraldInk
+                                            )
+                                        }
+                                    } else {
+                                        null
+                                    },
+                                    onClick = { onTaxTypeSelected(type) }
+                                )
+                            }
+                        }
+                        if (typeError != null) {
+                            Text(
+                                text = typeError.orEmpty(),
+                                fontSize = 12.sp,
+                                color = Color(0xFFDC2626),
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                    }
 
-                    // Tax number with country-specific placeholder
-                    WavesTextField(
-                        value = taxNumber,
-                        onValueChange = { taxNumber = it },
-                        label = "Tax Number",
-                        placeholder = taxFormatHint
-                    )
+                    // ---- Tax number (validated per selected type) ----
+                    if (selectedType == null || !selectedType.isNoTax) {
+                        WavesTextField(
+                            value = taxNumber,
+                            onValueChange = { taxNumber = it },
+                            label = "Tax Number *",
+                            placeholder = selectedType?.hint?.ifBlank { null },
+                            enabled = selectedType != null,
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                keyboardType = androidx.compose.ui.text.input.KeyboardType.Ascii
+                            ),
+                            errorMessage = taxNumberError
+                        )
+                    } else {
+                        Text(
+                            text = "No tax identification will be printed on your invoices.",
+                            fontSize = 13.sp,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    }
                 }
             }
 
