@@ -157,7 +157,6 @@ fun InvoicePreviewScreen(
                     }
                 }
             }
-            pageBitmap?.recycle()
             pageBitmap = bitmap
         } catch (exception: CancellationException) {
             throw exception
@@ -168,7 +167,9 @@ fun InvoicePreviewScreen(
 
     DisposableEffect(pdfFile) {
         onDispose {
-            pageBitmap?.recycle()
+            // Only delete the temp file here. Never recycle the bitmap manually:
+            // the composable may still be drawing it during regeneration, which
+            // crashes with "Canvas: trying to use a recycled bitmap". GC reclaims it.
             pdfFile?.delete()
         }
     }

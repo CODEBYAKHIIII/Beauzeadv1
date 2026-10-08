@@ -40,9 +40,10 @@ object DocumentExports {
         business: BusinessProfile,
         client: Client?
     ): File {
+        // Best-effort logo: a failed logo download must never break the whole invoice export.
         val logo = business.logoUrl
             .takeIf(String::isNotBlank)
-            ?.let(::downloadLogo)
+            ?.let { url -> runCatching { downloadLogo(url) }.getOrNull() }
         val currency = currencyFormatter(business.country)
         val pages = invoice.items.chunked(INVOICE_ITEMS_PER_PAGE).ifEmpty { listOf(emptyList()) }
         val document = PdfDocument()
@@ -60,7 +61,9 @@ object DocumentExports {
                     firstItemNumber = pageIndex * INVOICE_ITEMS_PER_PAGE + 1,
                     currency = currency,
                     logo = logo,
-                    isFinalPage = pageIndex == pages.lastIndex
+                    isFinalPage = pageIndex == pages.lastIndex,
+                    pageNumber = pageIndex + 1,
+                    totalPages = pages.size
                 )
                 document.finishPage(page)
             }
@@ -221,13 +224,21 @@ object DocumentExports {
         firstItemNumber: Int,
         currency: NumberFormat,
         logo: Bitmap?,
-        isFinalPage: Boolean
+        isFinalPage: Boolean,
+        pageNumber: Int = 1,
+        totalPages: Int = 1
     ) {
         val ink = Color.rgb(28, 35, 32)
         val green = Color.rgb(24, 105, 72)
         val muted = Color.rgb(92, 103, 97)
         val rule = Color.rgb(218, 226, 220)
         val pale = Color.rgb(244, 248, 245)
+
+        // Shared layout grid. Every right-aligned value in the document shares RIGHT_EDGE,
+        // so the invoice number, dates, table totals and summary totals form one clean line.
+        val leftEdge = 36f
+        val contentEdge = 559f
+        val rightEdge = 551f
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = ink
             textSize = 9f
@@ -254,6 +265,8 @@ object DocumentExports {
             canvas.drawText(value, right, y, using)
             using.textAlign = Paint.Align.LEFT
         }
+        // Vertically centre a text row: baseline sits 0.35 x textSize below the row centre.
+        fun centeredBaseline(rowCenter: Float, using: Paint): Float = rowCenter + using.textSize * 0.35f
         fun fit(value: String, maxWidth: Float, using: Paint): String {
             if (using.measureText(value) <= maxWidth) return value
             val ellipsis = "..."
@@ -261,14 +274,16 @@ object DocumentExports {
             while (end > 0 && using.measureText(value.substring(0, end) + ellipsis) > maxWidth) end--
             return value.substring(0, end) + ellipsis
         }
-        fun rule(y: Float) {
-            canvas.drawLine(36f, y, 559f, y, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        fun rule(y: Float, from: Float = leftEdge, to: Float = contentEdge) {
+            canvas.drawLine(from, y, to, y, Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = rule
                 strokeWidth = 0.8f
             })
         }
 
         canvas.drawColor(Color.WHITE)
+
+        // ---------- Header: logo + business block ----------
         if (logo != null) {
             canvas.drawBitmap(logo, null, Rect(36, 30, 92, 86), null)
         } else {
@@ -281,11 +296,11 @@ object DocumentExports {
         }
 
         val businessX = 104f
-        text(fit(business.name, 245f, Paint(bold).apply { textSize = 14f }), businessX, 42f, Paint(bold).apply {
+        text(fit(business.name, 245f, bold), businessX, 44f, Paint(bold).apply {
             color = ink
             textSize = 14f
         })
-        if (business.tagline.isNotBlank()) text(fit(business.tagline, 245f, small), businessX, 56f, small)
+        if (business.tagline.isNotBlank()) text(fit(business.tagline, 245f, small), businessX, 58f, small)
         val businessAddress = listOf(
             business.addressLine1,
             business.addressLine2,
@@ -296,18 +311,22 @@ object DocumentExports {
             text(fit(line, 245f, small), businessX, 70f + index * 11f, small)
         }
 
-        val right = 559f
-        val rightPaint = Paint(bold).apply {
+        // ---------- Header: invoice meta; labels share a column, values share the right edge ----------
+        val titlePaint = Paint(bold).apply {
             color = green
             textSize = 21f
             textAlign = Paint.Align.RIGHT
         }
-        text("INVOICE", right, 39f, rightPaint)
-        rightText(fit(invoice.id, 175f, bold), right, 61f, bold)
-        rightText("Issue date  ${formatInvoiceDate(invoice.issueDate)}", right, 77f, small)
-        rightText("Due date    ${formatInvoiceDate(invoice.dueDate)}", right, 90f, small)
+        text("INVOICE", rightEdge, 40f, titlePaint)
+        rightText(fit(invoice.id, 175f, bold), rightEdge, 60f, bold)
+        val dateLabelX = 436f
+        text("Issue date", dateLabelX, 77f, small)
+        rightText(formatInvoiceDate(invoice.issueDate), rightEdge, 77f, small)
+        text("Due date", dateLabelX, 90f, small)
+        rightText(formatInvoiceDate(invoice.dueDate), rightEdge, 90f, small)
         rule(105f)
 
+        // ---------- Bill To / Business tax block ----------
         canvas.drawRoundRect(
             RectF(36f, 116f, 559f, 199f),
             6f,
@@ -315,14 +334,14 @@ object DocumentExports {
             Paint(Paint.ANTI_ALIAS_FLAG).apply { color = pale }
         )
         text("BILL TO", 48f, 132f, label)
-        text(fit(client?.name ?: invoice.clientName, 490f, bold), 48f, 149f, bold)
+        text(fit(client?.name ?: invoice.clientName, 280f, bold), 48f, 149f, bold)
         val clientAddress = listOf(
             client?.address.orEmpty(),
             listOfNotNull(client?.city, client?.state, client?.postalCode, client?.country)
                 .filter(String::isNotBlank).joinToString(", ")
         ).filter(String::isNotBlank)
         clientAddress.take(2).forEachIndexed { index, line ->
-            text(fit(line, 490f, small), 48f, 163f + index * 11f, small)
+            text(fit(line, 280f, small), 48f, 163f + index * 11f, small)
         }
         val clientContact = listOfNotNull(
             client?.email?.takeIf(String::isNotBlank),
@@ -335,36 +354,41 @@ object DocumentExports {
             text(fit("${business.taxLabel}: ${business.taxNumber}", 195f, small), 350f, 149f, small)
         }
 
+        // ---------- Items table ----------
         text("INVOICE ITEMS", 36f, 222f, Paint(bold).apply { textSize = 11f })
         val tableTop = 238f
+        val tableHeight = 22f
         canvas.drawRoundRect(
-            RectF(36f, tableTop, 559f, tableTop + 23f),
+            RectF(36f, tableTop, 559f, tableTop + tableHeight),
             3f,
             3f,
             Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ink }
         )
         val whiteBold = Paint(bold).apply { color = Color.WHITE; textSize = 7.5f }
-        text("SL NO", 45f, tableTop + 15f, whiteBold)
-        text("ITEM", 80f, tableTop + 15f, whiteBold)
-        rightText("QTY", 342f, tableTop + 15f, whiteBold)
-        rightText("UNIT PRICE", 414f, tableTop + 15f, whiteBold)
-        rightText("TAX", 481f, tableTop + 15f, whiteBold)
-        rightText("TOTAL", 550f, tableTop + 15f, whiteBold)
+        val headerBaseline = centeredBaseline(tableTop + tableHeight / 2f, whiteBold)
+        text("SL NO", 45f, headerBaseline, whiteBold)
+        text("ITEM", 80f, headerBaseline, whiteBold)
+        rightText("QTY", 342f, headerBaseline, whiteBold)
+        rightText("UNIT PRICE", 414f, headerBaseline, whiteBold)
+        rightText("TAX", 481f, headerBaseline, whiteBold)
+        rightText("TOTAL", rightEdge, headerBaseline, whiteBold)
 
         val rowPaint = Paint(paint).apply { textSize = 8.5f }
         val rowBold = Paint(bold).apply { textSize = 8.5f }
-        var rowY = tableTop + 23f
+        val rowHeight = 26f
+        var rowY = tableTop + tableHeight
         items.forEachIndexed { index, item ->
-            val rowBottom = rowY + 25f
+            val rowBottom = rowY + rowHeight
             if (index % 2 == 1) {
                 canvas.drawRect(36f, rowY, 559f, rowBottom, Paint().apply { color = pale })
             }
-            text((firstItemNumber + index).toString(), 45f, rowY + 16f, rowPaint)
-            text(fit(item.name, 220f, rowPaint), 80f, rowY + 16f, rowPaint)
-            rightText(item.quantity.toString(), 342f, rowY + 16f, rowPaint)
-            rightText(currency.format(item.unitPrice), 414f, rowY + 16f, rowPaint)
-            rightText(currency.format(item.taxAmount), 481f, rowY + 16f, rowPaint)
-            rightText(currency.format(item.total), 550f, rowY + 16f, rowBold)
+            val rowBaseline = centeredBaseline(rowY + rowHeight / 2f, rowPaint)
+            text((firstItemNumber + index).toString(), 45f, rowBaseline, rowPaint)
+            text(fit(item.name, 220f, rowPaint), 80f, rowBaseline, rowPaint)
+            rightText(item.quantity.toString(), 342f, rowBaseline, rowPaint)
+            rightText(currency.format(item.unitPrice), 414f, rowBaseline, rowPaint)
+            rightText(currency.format(item.taxAmount), 481f, rowBaseline, rowPaint)
+            rightText(currency.format(item.total), rightEdge, rowBaseline, rowBold)
             canvas.drawLine(36f, rowBottom, 559f, rowBottom, Paint().apply {
                 color = rule
                 strokeWidth = 0.5f
@@ -372,33 +396,36 @@ object DocumentExports {
             rowY = rowBottom
         }
 
+        // ---------- Summary + terms + account details (final page only) ----------
         if (isFinalPage) {
-            val summaryTop = maxOf(350f, rowY + 14f)
-            text("Subtotal", 348f, summaryTop + 12f, small)
-            rightText(if (invoice.subtotal == 0.0) "Nill" else currency.format(invoice.subtotal), right, summaryTop + 12f, small)
-            text("Tax", 348f, summaryTop + 28f, small)
-            rightText(if (invoice.taxAmount == 0.0) "Nill" else currency.format(invoice.taxAmount), right, summaryTop + 28f, small)
-            text("Discount", 348f, summaryTop + 44f, small)
-            rightText(if (invoice.discount == 0.0) "Nill" else currency.format(invoice.discount), right, summaryTop + 44f, small)
-            canvas.drawLine(348f, summaryTop + 51f, right, summaryTop + 51f, Paint().apply {
-                color = rule
-                strokeWidth = 0.8f
-            })
-            text("TOTAL", 348f, summaryTop + 68f, totalPaint)
-            rightText(currency.format(invoice.grandTotal), right, summaryTop + 68f, totalPaint)
-            text("Due Date  ${formatInvoiceDate(invoice.dueDate)}", 348f, summaryTop + 86f, Paint(bold).apply {
+            val summaryTop = maxOf(352f, rowY + 16f)
+            val summaryLabelX = 340f
+
+            // Left column: terms, top-aligned with the Subtotal row.
+            text("TERMS", 36f, summaryTop + 12f, label)
+            val terms = invoice.terms.ifBlank { "Nill" }
+            text(fit(terms, 280f, small), 36f, summaryTop + 27f, small)
+
+            // Right column: totals; every value sits on the shared right edge.
+            text("Subtotal", summaryLabelX, summaryTop + 12f, small)
+            rightText(if (invoice.subtotal == 0.0) "Nill" else currency.format(invoice.subtotal), rightEdge, summaryTop + 12f, small)
+            text("Tax", summaryLabelX, summaryTop + 28f, small)
+            rightText(if (invoice.taxAmount == 0.0) "Nill" else currency.format(invoice.taxAmount), rightEdge, summaryTop + 28f, small)
+            text("Discount", summaryLabelX, summaryTop + 44f, small)
+            rightText(if (invoice.discount == 0.0) "Nill" else currency.format(invoice.discount), rightEdge, summaryTop + 44f, small)
+            rule(summaryTop + 52f, from = summaryLabelX, to = rightEdge)
+            text("TOTAL", summaryLabelX, summaryTop + 70f, totalPaint)
+            rightText(currency.format(invoice.grandTotal), rightEdge, summaryTop + 70f, totalPaint)
+            val duePaint = Paint(bold).apply {
                 color = Color.BLACK
                 textSize = 9f
-            })
+            }
+            text("Due date", summaryLabelX, summaryTop + 92f, duePaint)
+            rightText(formatInvoiceDate(invoice.dueDate), rightEdge, summaryTop + 92f, duePaint)
 
-            val sectionY = summaryTop + 12f
-            text("TERMS", 36f, sectionY, label)
-            val terms = invoice.terms.ifBlank { "Nill" }
-            text(fit(terms, 280f, small), 36f, sectionY + 15f, small)
-
-            val accountTop = summaryTop + 111f
-            rule(accountTop - 10f)
-            text("ACCOUNT DETAILS FOR PAYMENT", 36f, accountTop, label)
+            // Account details: strict two-column grid with identical per-row baselines.
+            rule(summaryTop + 108f)
+            text("ACCOUNT DETAILS FOR PAYMENT", 36f, summaryTop + 122f, label)
             val accountLines = listOf(
                 business.bankName.takeIf(String::isNotBlank),
                 business.accountHolder.takeIf(String::isNotBlank)?.let { "Account holder: $it" },
@@ -408,17 +435,17 @@ object DocumentExports {
                 business.upiId.takeIf(String::isNotBlank)?.let { "UPI: $it" }
             ).filterNotNull()
             if (accountLines.isEmpty()) {
-                text("Nill", 36f, accountTop + 15f, small)
+                text("Nill", 36f, summaryTop + 138f, small)
             } else {
                 val split = (accountLines.size + 1) / 2
                 accountLines.forEachIndexed { index, value ->
                     val column = if (index < split) 0 else 1
                     val row = if (index < split) index else index - split
-                    text(fit(value, 245f, small), 36f + column * 265f, accountTop + 15f + row * 12f, small)
+                    text(fit(value, 245f, small), 36f + column * 265f, summaryTop + 138f + row * 12f, small)
                 }
             }
         }
-        drawInvoiceFooter(canvas, business, ink, muted, rule, green)
+        drawInvoiceFooter(canvas, business, ink, muted, rule, green, pageNumber, totalPages)
     }
 
     private fun drawInvoiceFooter(
@@ -427,7 +454,9 @@ object DocumentExports {
         ink: Int,
         muted: Int,
         rule: Int,
-        green: Int
+        green: Int,
+        pageNumber: Int = 1,
+        totalPages: Int = 1
     ) {
         val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = rule
@@ -442,22 +471,34 @@ object DocumentExports {
         }
         canvas.drawText("Thank you for your business!", 297.5f, 805f, messagePaint)
 
+        // Three fixed footer slots so contact blocks never drift.
+        val slots = listOf(36f, 210f, 384f)
         val contacts = listOf(
-            Triple("web", business.website.removePrefix("https://").removePrefix("http://").takeIf(String::isNotBlank), 42f),
-            Triple("phone", business.phone.takeIf(String::isNotBlank), 220f),
-            Triple("email", business.email.takeIf(String::isNotBlank), 398f)
+            Pair("web", business.website.removePrefix("https://").removePrefix("http://").takeIf(String::isNotBlank)),
+            Pair("phone", business.phone.takeIf(String::isNotBlank)),
+            Pair("email", business.email.takeIf(String::isNotBlank))
         ).filter { it.second != null }
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val contactPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = muted
             textSize = 7f
         }
-        contacts.forEachIndexed { index, (kind, value, x) ->
+        contacts.forEachIndexed { index, (kind, value) ->
+            val x = slots.getOrElse(index) { 36f + index * 174f }
             drawContactIcon(canvas, kind, x, 820f, green)
-            val availableWidth = if (index == contacts.lastIndex) 151f else 170f
+            val availableWidth = 158f
             val formatted = value.orEmpty()
             var end = formatted.length
-            while (end > 0 && paint.measureText(formatted.substring(0, end)) > availableWidth) end--
-            canvas.drawText(formatted.substring(0, end), x + 10f, 822f, paint)
+            while (end > 0 && contactPaint.measureText(formatted.substring(0, end)) > availableWidth) end--
+            canvas.drawText(formatted.substring(0, end), x + 10f, 822f, contactPaint)
+        }
+
+        if (totalPages > 1) {
+            val pagePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = muted
+                textSize = 7f
+                textAlign = Paint.Align.RIGHT
+            }
+            canvas.drawText("Page $pageNumber of $totalPages", 559f, 834f, pagePaint)
         }
     }
 
