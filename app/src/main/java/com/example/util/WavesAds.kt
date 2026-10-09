@@ -41,11 +41,11 @@ object WavesAds {
 
     // ==================================================================
     // PRODUCTION AdMob IDs (WAVES: Invoice & Billing, admob.google.com).
-    // BANNER_UNIT_ID / REWARDED_UNIT_ID still hold Google TEST values
-    // until the two ad units are created - swap them, then release.
+    // REWARDED_UNIT_ID still holds a Google TEST value until the
+    // "Waves Rewarded" ad unit is created - swap it, then release.
     // ==================================================================
     const val ADMOB_APP_ID = "ca-app-pub-5485098198270460~2002630118" // production
-    const val BANNER_UNIT_ID = "ca-app-pub-3940256099942544/6300978111" // TODO: replace with Waves Banner unit
+    const val BANNER_UNIT_ID = "ca-app-pub-5485098198270460/9705860313" // production "Waves Banner"
     const val REWARDED_UNIT_ID = "ca-app-pub-3940256099942544/5224354917" // TODO: replace with Waves Rewarded unit
 
     private const val PREFS_NAME = "waves_ads_prefs"
