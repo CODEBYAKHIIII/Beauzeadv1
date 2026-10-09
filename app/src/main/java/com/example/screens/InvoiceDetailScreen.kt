@@ -68,13 +68,14 @@ import com.example.components.WavesPrimaryButton
 import com.example.components.WavesSecondaryButton
 import com.example.components.WavesTextField
 import com.example.components.showDemoToast
+import com.example.data.InvoiceDisplayFormat
 import com.example.data.InvoiceStatus
+import com.example.data.BusinessProfile
 import com.example.data.FirestoreDataRepository
 import com.example.data.FirestoreState
 import com.example.data.DocumentExports
 import com.example.data.PaymentRecord
 import com.example.data.ReportDateUtils
-import com.example.data.SampleData
 import com.example.ui.theme.AccentCyan
 import com.example.ui.theme.BackgroundColor
 import com.example.ui.theme.BorderGray
@@ -124,6 +125,13 @@ fun InvoiceDetailScreen(
     }
 
     val balanceDue = invoice.balanceDue
+
+    // Currency display follows the business country, matching the PDF exports.
+    val businessState by remember { FirestoreDataRepository.observeBusinessProfile() }
+        .collectAsState(initial = FirestoreState.Loading)
+    val businessCountry = ((businessState as? FirestoreState.Data<*>)?.value as? BusinessProfile)
+        ?.country.orEmpty().ifBlank { "India" }
+    fun fmt(amount: Double): String = InvoiceDisplayFormat.formatCurrency(amount, businessCountry)
 
     fun updateInvoiceStatus(status: InvoiceStatus) {
         coroutineScope.launch {
@@ -235,7 +243,7 @@ fun InvoiceDetailScreen(
                 ) {
                     Column {
                         Text(
-                            text = SampleData.formatCurrency(invoice.grandTotal),
+                            text = fmt(invoice.grandTotal),
                             fontSize = 24.sp,
                             fontWeight = FontWeight.Bold,
                             color = TextPrimary
@@ -243,7 +251,7 @@ fun InvoiceDetailScreen(
                         Spacer(modifier = Modifier.height(2.dp))
                         if (balanceDue > 0) {
                             Text(
-                                text = "${SampleData.formatCurrency(balanceDue)} balance due",
+                                text = "${fmt(balanceDue)} balance due",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = DangerRed
@@ -349,14 +357,14 @@ fun InvoiceDetailScreen(
                                 )
                                 Text(
                                     "${item.quantity.toInt()} × ${
-                                        SampleData.formatCurrency(item.unitPrice)
+                                        fmt(item.unitPrice)
                                     }",
                                     fontSize = 12.sp,
                                     color = TextSecondary
                                 )
                             }
                             Text(
-                                SampleData.formatCurrency(item.total),
+                                fmt(item.total),
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = TextPrimary
@@ -377,7 +385,7 @@ fun InvoiceDetailScreen(
                     ) {
                         Text("Subtotal", fontSize = 13.sp, color = TextSecondary)
                         Text(
-                            SampleData.formatCurrency(invoice.subtotal),
+                            fmt(invoice.subtotal),
                             fontSize = 13.sp,
                             color = TextPrimary
                         )
@@ -392,7 +400,7 @@ fun InvoiceDetailScreen(
                             color = TextSecondary
                         )
                         Text(
-                            SampleData.formatCurrency(invoice.taxAmount),
+                            fmt(invoice.taxAmount),
                             fontSize = 13.sp,
                             color = TextPrimary
                         )
@@ -403,7 +411,7 @@ fun InvoiceDetailScreen(
                     ) {
                         Text("Paid so far", fontSize = 13.sp, color = SuccessGreen)
                         Text(
-                            "-${SampleData.formatCurrency(invoice.paidAmount)}",
+                            "-${fmt(invoice.paidAmount)}",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = SuccessGreen
@@ -424,7 +432,7 @@ fun InvoiceDetailScreen(
                             color = TextPrimary
                         )
                         Text(
-                            SampleData.formatCurrency(balanceDue),
+                            fmt(balanceDue),
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (balanceDue > 0) DangerRed else SuccessGreen
@@ -722,7 +730,7 @@ private fun RecordPaymentBottomSheet(
                 text = if (isSavingPayment) "SAVING..." else "SAVE PAYMENT",
                 onClick = {
                     hasAttemptedSave = true
-                    val amount = amountStr.toDoubleOrNull()
+                    val amount = amountStr.trim().replace(",", "").toDoubleOrNull()
                     when {
                         // Inline field errors are shown on the inputs; block the save.
                         amountError != null || referenceError != null -> Unit

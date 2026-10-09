@@ -45,7 +45,9 @@ import com.example.components.WavesFAB
 import com.example.components.WavesHeader
 import com.example.components.WavesNavTab
 import com.example.components.WavesTextField
+import com.example.data.InvoiceDisplayFormat
 import com.example.data.InvoiceStatus
+import com.example.data.BusinessProfile
 import com.example.data.FirestoreDataRepository
 import com.example.data.FirestoreState
 import com.example.components.StateScreen
@@ -70,6 +72,13 @@ fun InvoiceListScreen(
 
     val invoiceState by remember { FirestoreDataRepository.observeInvoices() }
         .collectAsState(initial = FirestoreState.Loading)
+    // Currency display follows the business country, matching the PDF exports.
+    val businessState by remember { FirestoreDataRepository.observeBusinessProfile() }
+        .collectAsState(initial = FirestoreState.Loading)
+    val businessCountry = ((businessState as? FirestoreState.Data<*>)?.value as? BusinessProfile)
+        ?.country.orEmpty().ifBlank { "India" }
+    fun formatCurrency(amount: Double): String =
+        InvoiceDisplayFormat.formatCurrency(amount, businessCountry)
     val allInvoices = when (val state = invoiceState) {
         FirestoreState.Loading -> {
             StateScreen(type = StateType.LOADING, message = "Loading invoices...")
@@ -292,5 +301,3 @@ fun InvoiceListScreen(
         }
     }
 }
-
-private fun formatCurrency(amount: Double) = "₹%,.0f".format(amount)

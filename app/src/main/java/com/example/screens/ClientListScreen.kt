@@ -52,7 +52,8 @@ import com.example.components.StateType
 import com.example.components.showDemoToast
 import com.example.data.FirestoreDataRepository
 import com.example.data.FirestoreState
-import com.example.data.SampleData
+import com.example.data.InvoiceDisplayFormat
+import com.example.data.BusinessProfile
 import com.example.ui.theme.BackgroundColor
 import com.example.ui.theme.DangerRed
 import com.example.ui.theme.EmeraldInk
@@ -74,6 +75,13 @@ fun ClientListScreen(
 
     val clientState by remember { FirestoreDataRepository.observeClients() }
         .collectAsState(initial = FirestoreState.Loading)
+    // Currency display follows the business country, matching the PDF exports.
+    val businessState by remember { FirestoreDataRepository.observeBusinessProfile() }
+        .collectAsState(initial = FirestoreState.Loading)
+    val businessCountry = ((businessState as? FirestoreState.Data<*>)?.value as? BusinessProfile)
+        ?.country.orEmpty().ifBlank { "India" }
+    fun formatCurrency(amount: Double): String =
+        InvoiceDisplayFormat.formatCurrency(amount, businessCountry)
     val allClients = when (val state = clientState) {
         FirestoreState.Loading -> {
             StateScreen(type = StateType.LOADING, message = "Loading clients...")
@@ -243,7 +251,7 @@ fun ClientListScreen(
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = "Billed: ${SampleData.formatCurrency(client.totalBilled)}",
+                                        text = "Billed: ${formatCurrency(client.totalBilled)}",
                                         fontSize = 12.sp,
                                         color = TextSecondary
                                     )
@@ -252,7 +260,7 @@ fun ClientListScreen(
                                 Column(horizontalAlignment = Alignment.End) {
                                     if (client.totalDue > 0) {
                                         Text(
-                                            text = "${SampleData.formatCurrency(client.totalDue)} due",
+                                            text = "${formatCurrency(client.totalDue)} due",
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = DangerRed

@@ -53,6 +53,8 @@ import com.example.components.StateScreen
 import com.example.components.StateType
 import com.example.data.FirestoreDataRepository
 import com.example.data.FirestoreState
+import com.example.data.InvoiceDisplayFormat
+import com.example.data.BusinessProfile
 import com.example.data.DocumentExports
 import com.example.ui.theme.BackgroundColor
 import com.example.ui.theme.DangerRed
@@ -85,6 +87,14 @@ fun ClientDetailScreen(
     val client = clientData?.find { it.id == clientId }
     val clientInvoices = (invoicesState as? FirestoreState.Data)?.value.orEmpty()
         .filter { it.clientId == clientId }
+
+    // Currency display follows the business country, matching the PDF exports.
+    val businessState by remember { FirestoreDataRepository.observeBusinessProfile() }
+        .collectAsState(initial = FirestoreState.Loading)
+    val businessCountry = ((businessState as? FirestoreState.Data<*>)?.value as? BusinessProfile)
+        ?.country.orEmpty().ifBlank { "India" }
+    fun formatCurrency(amount: Double): String =
+        InvoiceDisplayFormat.formatCurrency(amount, businessCountry)
 
     if (clientsState is FirestoreState.Loading || invoicesState is FirestoreState.Loading) {
         StateScreen(type = StateType.LOADING, message = "Loading client...")
@@ -490,8 +500,6 @@ fun ClientDetailScreen(
         }
     }
 }
-
-private fun formatCurrency(amount: Double) = "₹%,.0f".format(amount)
 
 @Composable
 private fun EmptyTabMessage(title: String, message: String) {

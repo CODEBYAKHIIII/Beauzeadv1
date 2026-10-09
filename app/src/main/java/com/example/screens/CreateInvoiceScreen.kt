@@ -53,10 +53,10 @@ import androidx.compose.ui.unit.sp
 import com.example.data.FirestoreDataRepository
 import com.example.data.FirestoreState
 import com.example.data.Invoice
+import com.example.data.InvoiceDisplayFormat
 import com.example.data.InvoiceStatus
 import com.example.data.Product
 import com.example.data.ReportDateUtils
-import com.example.data.SampleData
 import com.example.components.StateScreen
 import com.example.components.StateType
 import com.example.components.WavesCard
@@ -117,6 +117,26 @@ fun CreateInvoiceScreen(
         }
     }
 
+    var selectedClient by remember { mutableStateOf<com.example.data.Client?>(null) }
+    var clientDropdownOpen by remember { mutableStateOf(false) }
+
+    val items = remember { mutableStateListOf<InvoiceItem>() }
+
+    var discountStr by remember { mutableStateOf("0") }
+    var notes by remember { mutableStateOf("") }
+    var terms by remember { mutableStateOf("") }
+    var productPickerOpen by remember { mutableStateOf(false) }
+    var itemEditorOpen by remember { mutableStateOf(false) }
+    var editingItemIndex by remember { mutableStateOf<Int?>(null) }
+    var itemName by remember { mutableStateOf("") }
+    var itemQuantity by remember { mutableStateOf("1") }
+    var itemUnitPrice by remember { mutableStateOf("") }
+    var itemTaxRate by remember { mutableStateOf(business?.defaultTaxRate?.toString() ?: "18") }
+    var hasAttemptedItemSave by remember { mutableStateOf(false) }
+
+    // These full-screen states must sit BELOW every remember above: if they returned
+    // earlier, a failed save (isSaving true -> false) would re-initialize the item list,
+    // selected client, discount, notes and terms and wipe the whole invoice form.
     if (isSaving) {
         StateScreen(
             type = StateType.LOADING,
@@ -138,23 +158,6 @@ fun CreateInvoiceScreen(
         )
         return
     }
-
-    var selectedClient by remember { mutableStateOf<com.example.data.Client?>(null) }
-    var clientDropdownOpen by remember { mutableStateOf(false) }
-
-    val items = remember { mutableStateListOf<InvoiceItem>() }
-
-    var discountStr by remember { mutableStateOf("0") }
-    var notes by remember { mutableStateOf("") }
-    var terms by remember { mutableStateOf("") }
-    var productPickerOpen by remember { mutableStateOf(false) }
-    var itemEditorOpen by remember { mutableStateOf(false) }
-    var editingItemIndex by remember { mutableStateOf<Int?>(null) }
-    var itemName by remember { mutableStateOf("") }
-    var itemQuantity by remember { mutableStateOf("1") }
-    var itemUnitPrice by remember { mutableStateOf("") }
-    var itemTaxRate by remember { mutableStateOf(business?.defaultTaxRate?.toString() ?: "18") }
-    var hasAttemptedItemSave by remember { mutableStateOf(false) }
 
     LaunchedEffect(business) {
         if (business != null) {
@@ -273,6 +276,12 @@ fun CreateInvoiceScreen(
         )
         return
     }
+
+    // Past the loading/failure gates the business profile is always present.
+    // Amounts follow the business country's currency, matching the PDF exports.
+    val businessCountry = business?.country ?: "India"
+    val currencySymbolText = InvoiceDisplayFormat.currencySymbol(businessCountry)
+    fun fmt(amount: Double): String = InvoiceDisplayFormat.formatCurrency(amount, businessCountry)
 
     fun saveInvoice() {
         hasAttemptedSave = true
@@ -534,13 +543,13 @@ fun CreateInvoiceScreen(
                             ) {
                                 Text(
                                     text = "${item.quantity.toInt()} × ${
-                                        SampleData.formatCurrency(item.unitPrice)
+                                        fmt(item.unitPrice)
                                     } (Tax: ${item.taxRate.toInt()}%)",
                                     fontSize = 13.sp,
                                     color = TextSecondary
                                 )
                                 Text(
-                                    text = SampleData.formatCurrency(item.total),
+                                    text = fmt(item.total),
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = TextPrimary
@@ -608,7 +617,7 @@ fun CreateInvoiceScreen(
                     ) {
                         Text("Subtotal", fontSize = 14.sp, color = TextSecondary)
                         Text(
-                            SampleData.formatCurrency(subtotal),
+                            fmt(subtotal),
                             fontSize = 14.sp,
                             color = TextPrimary
                         )
@@ -619,7 +628,7 @@ fun CreateInvoiceScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Discount (₹)", fontSize = 14.sp, color = TextSecondary)
+                        Text("Discount ($currencySymbolText)", fontSize = 14.sp, color = TextSecondary)
                         Box(modifier = Modifier.width(100.dp)) {
                             OutlinedTextField(
                                 value = discountStr,
@@ -661,7 +670,7 @@ fun CreateInvoiceScreen(
                             color = TextSecondary
                         )
                         Text(
-                            SampleData.formatCurrency(taxAmount),
+                            fmt(taxAmount),
                             fontSize = 14.sp,
                             color = TextPrimary
                         )
@@ -683,7 +692,7 @@ fun CreateInvoiceScreen(
                             color = TextPrimary
                         )
                         Text(
-                            SampleData.formatCurrency(grandTotal),
+                            fmt(grandTotal),
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             color = EmeraldInk

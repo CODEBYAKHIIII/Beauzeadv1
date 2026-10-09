@@ -535,6 +535,8 @@ object DocumentExports {
     }
 
     private fun currencyFormatter(country: String): NumberFormat {
+        // Unknown/blank business country must never abort the PDF export: fall back
+        // to the app default (India, matching emptyBusinessProfile) instead of throwing.
         val code = when (country.trim().lowercase(Locale.ROOT)) {
             "uk", "united kingdom" -> "GB"
             "usa", "united states", "united states of america" -> "US"
@@ -542,7 +544,7 @@ object DocumentExports {
             else -> Locale.getISOCountries().firstOrNull { code ->
                 Locale.Builder().setRegion(code).build().getDisplayCountry(Locale.ENGLISH)
                     .equals(country.trim(), ignoreCase = true)
-            } ?: error("Select a supported country before creating an invoice.")
+            } ?: "IN"
         }
         val locale = Locale.Builder().setLanguage("en").setRegion(code).build()
         return NumberFormat.getCurrencyInstance(locale).apply {

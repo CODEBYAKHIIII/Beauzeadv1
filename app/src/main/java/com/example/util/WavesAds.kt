@@ -5,8 +5,11 @@ import android.content.Context
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
@@ -122,8 +125,23 @@ object WavesAds {
 
         if (adsRemoved.value) return
 
-        initialize(context)
-        (context as? Activity)?.let { gatherConsent(it) }
+        // Google UMP policy: no ad request may leave the device before the consent
+        // flow has completed where required. Gate both SDK init and the banner load
+        // behind consent completion instead of loading while the form is still up.
+        var canRequestAds by remember {
+            mutableStateOf(initialized.get() && consentGathered.get())
+        }
+        LaunchedEffect(Unit) {
+            initialize(context) {
+                val activity = context as? Activity
+                if (activity != null) {
+                    gatherConsent(activity) { canRequestAds = true }
+                } else {
+                    canRequestAds = true
+                }
+            }
+        }
+        if (!canRequestAds) return
 
         val adView = remember {
             AdView(context.applicationContext).apply {

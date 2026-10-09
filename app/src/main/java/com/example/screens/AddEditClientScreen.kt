@@ -57,6 +57,7 @@ import com.example.ui.theme.InputBorderGray
 import com.example.ui.theme.OnPrimary
 import com.example.ui.theme.SurfaceColor
 import com.example.ui.theme.TextSecondary
+import com.example.util.WavesTaxCatalog
 import com.example.util.WavesValidation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -85,7 +86,9 @@ fun AddEditClientScreen(
     var postalCode by remember { mutableStateOf("") }
     var country by remember { mutableStateOf(existingClient?.country ?: "India") }
     var countryDropdownOpen by remember { mutableStateOf(false) }
-    val countries = listOf("India", "USA", "UK", "UAE", "Australia", "Canada", "Singapore")
+    // Same country set as Business Profile / Tax Settings so client billing
+    // country always aligns with the currencies and tax types Waves supports.
+    val countries = WavesTaxCatalog.countries
 
     var taxNumber by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }

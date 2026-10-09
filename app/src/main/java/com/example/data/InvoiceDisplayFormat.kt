@@ -27,6 +27,10 @@ object InvoiceDisplayFormat {
         return "${currency.currencyCode} (${currency.getSymbol(locale)})"
     }
 
+    /** Symbol for the business country's currency, e.g. ₹ / $ / £. */
+    fun currencySymbol(country: String): String =
+        Currency.getInstance(localeForCountry(country)).getSymbol(Locale.Builder().setLanguage("en").build())
+
     fun formatCurrency(amount: Double, country: String): String =
         NumberFormat.getCurrencyInstance(localeForCountry(country)).format(amount)
 
@@ -39,7 +43,7 @@ object InvoiceDisplayFormat {
             else -> Locale.getISOCountries().firstOrNull { candidate ->
                 Locale("", candidate).getDisplayCountry(Locale.ENGLISH)
                     .equals(normalized, ignoreCase = true)
-            } ?: error("Select a supported country to determine its currency.")
+            } ?: "IN" // Unknown/blank country falls back to the app default instead of crashing.
         }
         return Locale.Builder().setLanguage("en").setRegion(code).build()
     }

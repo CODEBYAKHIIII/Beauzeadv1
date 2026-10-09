@@ -41,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -107,8 +108,11 @@ fun BusinessProfileScreen(
     var hasAttemptedSave by remember { mutableStateOf(false) }
 
     // Business info
-    var businessName by remember { mutableStateOf(initial.name) }
-    var tagline by remember { mutableStateOf(initial.tagline) }
+    // Text fields use rememberSaveable: the logo crop flow replaces this screen's
+    // content, and plain remember would re-initialize these fields (losing every
+    // unsaved edit) once the crop screen completes and the form re-enters composition.
+    var businessName by rememberSaveable { mutableStateOf(initial.name) }
+    var tagline by rememberSaveable { mutableStateOf(initial.tagline) }
     var logoUrl by remember { mutableStateOf(initial.logoUrl) }
     var isUploadingLogo by remember { mutableStateOf(false) }
     var logoToCrop by remember { mutableStateOf<Uri?>(null) }
@@ -138,18 +142,18 @@ fun BusinessProfileScreen(
     }
 
     // Contact
-    var email by remember { mutableStateOf(initial.email) }
-    var phone by remember { mutableStateOf(initial.phone) }
-    var website by remember { mutableStateOf(initial.website) }
+    var email by rememberSaveable { mutableStateOf(initial.email) }
+    var phone by rememberSaveable { mutableStateOf(initial.phone) }
+    var website by rememberSaveable { mutableStateOf(initial.website) }
 
     // Address
-    var addressLine1 by remember { mutableStateOf(initial.addressLine1) }
-    var addressLine2 by remember { mutableStateOf(initial.addressLine2) }
-    var city by remember { mutableStateOf(initial.city) }
-    var state by remember { mutableStateOf(initial.state) }
-    var postalCode by remember { mutableStateOf(initial.postalCode) }
+    var addressLine1 by rememberSaveable { mutableStateOf(initial.addressLine1) }
+    var addressLine2 by rememberSaveable { mutableStateOf(initial.addressLine2) }
+    var city by rememberSaveable { mutableStateOf(initial.city) }
+    var state by rememberSaveable { mutableStateOf(initial.state) }
+    var postalCode by rememberSaveable { mutableStateOf(initial.postalCode) }
 
-    var country by remember { mutableStateOf(initial.country) }
+    var country by rememberSaveable { mutableStateOf(initial.country) }
     var countryDropdownOpen by remember { mutableStateOf(false) }
     val countries = WavesTaxCatalog.countries
 
