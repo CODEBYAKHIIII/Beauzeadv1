@@ -74,7 +74,11 @@ data class Invoice(
     val paidAmount: Double,
     val notes: String = "Payment due within 15 days.",
     val terms: String = "Standard commercial terms apply.",
-    val payments: List<PaymentRecord> = emptyList()
+    val payments: List<PaymentRecord> = emptyList(),
+    // Country whose currency this invoice bills in (from InvoiceDisplayFormat.supportedCountries).
+    // Blank means "follow the business country", which keeps pre-existing invoices rendering
+    // exactly as they did before per-invoice currencies were introduced.
+    val currencyCountry: String = ""
 ) {
     val subtotal: Double get() = items.sumOf { it.subtotal }
     val taxAmount: Double get() = items.sumOf { it.taxAmount }

@@ -44,7 +44,10 @@ object DocumentExports {
         val logo = business.logoUrl
             .takeIf(String::isNotBlank)
             ?.let { url -> runCatching { downloadLogo(url) }.getOrNull() }
-        val currency = currencyFormatter(business.country)
+        // The invoice carries its own billing currency (chosen on the creation page);
+        // blank falls back to the business country so older invoices render as before.
+        // Only the currency lookup is currency-aware here — the page layout is untouched.
+        val currency = currencyFormatter(invoice.currencyCountry.ifBlank { business.country })
         val pages = invoice.items.chunked(INVOICE_ITEMS_PER_PAGE).ifEmpty { listOf(emptyList()) }
         val document = PdfDocument()
         try {

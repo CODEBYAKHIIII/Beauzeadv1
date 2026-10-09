@@ -354,7 +354,10 @@ fun DashboardScreen(
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = InvoiceDisplayFormat.formatCurrency(invoice.grandTotal, business.country),
+                                text = InvoiceDisplayFormat.formatCurrency(
+                                    invoice.grandTotal,
+                                    invoice.currencyCountry.ifBlank { business.country }
+                                ),
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = TextPrimary

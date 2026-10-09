@@ -88,13 +88,14 @@ fun ClientDetailScreen(
     val clientInvoices = (invoicesState as? FirestoreState.Data)?.value.orEmpty()
         .filter { it.clientId == clientId }
 
-    // Currency display follows the business country, matching the PDF exports.
+    // Amounts follow each invoice's own billing currency (chosen on the creation
+    // page); invoices created before that feature follow the business country.
     val businessState by remember { FirestoreDataRepository.observeBusinessProfile() }
         .collectAsState(initial = FirestoreState.Loading)
     val businessCountry = ((businessState as? FirestoreState.Data<*>)?.value as? BusinessProfile)
         ?.country.orEmpty().ifBlank { "India" }
-    fun formatCurrency(amount: Double): String =
-        InvoiceDisplayFormat.formatCurrency(amount, businessCountry)
+    fun formatCurrency(amount: Double, invoiceCurrencyCountry: String = businessCountry): String =
+        InvoiceDisplayFormat.formatCurrency(amount, invoiceCurrencyCountry)
 
     if (clientsState is FirestoreState.Loading || invoicesState is FirestoreState.Loading) {
         StateScreen(type = StateType.LOADING, message = "Loading client...")
@@ -404,7 +405,7 @@ fun ClientDetailScreen(
                                         )
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(
-                                            text = formatCurrency(invoice.grandTotal),
+                                            text = formatCurrency(invoice.grandTotal, invoice.currencyCountry.ifBlank { businessCountry }),
                                             fontSize = 15.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             color = TextPrimary

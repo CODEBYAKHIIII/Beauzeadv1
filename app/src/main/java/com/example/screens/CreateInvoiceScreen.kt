@@ -120,6 +120,11 @@ fun CreateInvoiceScreen(
     var selectedClient by remember { mutableStateOf<com.example.data.Client?>(null) }
     var clientDropdownOpen by remember { mutableStateOf(false) }
 
+    // Per-invoice currency: blank until the user picks one, in which case the
+    // business country's currency applies (see effectiveCurrencyCountry below).
+    var currencyCountry by remember { mutableStateOf("") }
+    var currencyMenuExpanded by remember { mutableStateOf(false) }
+
     val items = remember { mutableStateListOf<InvoiceItem>() }
 
     var discountStr by remember { mutableStateOf("0") }
@@ -278,10 +283,12 @@ fun CreateInvoiceScreen(
     }
 
     // Past the loading/failure gates the business profile is always present.
-    // Amounts follow the business country's currency, matching the PDF exports.
+    // Amounts follow the invoice's own currency (chosen below); until the user
+    // picks one, the business country's currency applies, matching the PDF exports.
     val businessCountry = business?.country ?: "India"
-    val currencySymbolText = InvoiceDisplayFormat.currencySymbol(businessCountry)
-    fun fmt(amount: Double): String = InvoiceDisplayFormat.formatCurrency(amount, businessCountry)
+    val effectiveCurrencyCountry = currencyCountry.ifBlank { businessCountry }
+    val currencySymbolText = InvoiceDisplayFormat.currencySymbol(effectiveCurrencyCountry)
+    fun fmt(amount: Double): String = InvoiceDisplayFormat.formatCurrency(amount, effectiveCurrencyCountry)
 
     fun saveInvoice() {
         hasAttemptedSave = true
@@ -331,7 +338,8 @@ fun CreateInvoiceScreen(
                         status = InvoiceStatus.PENDING,
                         paidAmount = 0.0,
                         notes = notes,
-                        terms = terms
+                        terms = terms,
+                        currencyCountry = effectiveCurrencyCountry
                     )
                 )
                 showSuccess = true
@@ -481,6 +489,61 @@ fun CreateInvoiceScreen(
                             errorMessage = dueDateError
                         )
                     }
+
+                    // Per-invoice currency picker: defaults to the business country's
+                    // currency, overridable for any single invoice without touching
+                    // the business profile or its tax jurisdiction.
+                    Box {
+                        Column {
+                            Text(
+                                "Invoice Currency",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = TextSecondary,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                            OutlinedTextField(
+                                value = InvoiceDisplayFormat.currencyName(effectiveCurrencyCountry),
+                                onValueChange = {},
+                                readOnly = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(56.dp)
+                                    .clickable { currencyMenuExpanded = true },
+                                shape = RoundedCornerShape(12.dp),
+                                trailingIcon = {
+                                    IconButton(onClick = { currencyMenuExpanded = true }) {
+                                        Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+                                    }
+                                },
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = SurfaceColor,
+                                    unfocusedContainerColor = SurfaceColor,
+                                    focusedBorderColor = AccentCyan,
+                                    unfocusedBorderColor = InputBorderGray
+                                )
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = currencyMenuExpanded,
+                            onDismissRequest = { currencyMenuExpanded = false }
+                        ) {
+                            InvoiceDisplayFormat.supportedCountries.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text("$option — ${InvoiceDisplayFormat.currencyCode(option)}") },
+                                    onClick = {
+                                        currencyCountry = option
+                                        currencyMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    Text(
+                        "Applies to this invoice only. New invoices default to your business country's currency.",
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
                 }
             }
 

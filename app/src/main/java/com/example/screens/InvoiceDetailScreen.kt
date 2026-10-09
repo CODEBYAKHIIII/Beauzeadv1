@@ -132,12 +132,15 @@ fun InvoiceDetailScreen(
 
     val balanceDue = invoice.balanceDue
 
-    // Currency display follows the business country, matching the PDF exports.
+    // Currency display follows the invoice's own billing currency (chosen on the
+    // creation page); invoices created before that feature follow the business
+    // country, matching the PDF exports.
     val businessState by remember { FirestoreDataRepository.observeBusinessProfile() }
         .collectAsState(initial = FirestoreState.Loading)
     val businessCountry = ((businessState as? FirestoreState.Data<*>)?.value as? BusinessProfile)
         ?.country.orEmpty().ifBlank { "India" }
-    fun fmt(amount: Double): String = InvoiceDisplayFormat.formatCurrency(amount, businessCountry)
+    val invoiceCurrencyCountry = invoice.currencyCountry.ifBlank { businessCountry }
+    fun fmt(amount: Double): String = InvoiceDisplayFormat.formatCurrency(amount, invoiceCurrencyCountry)
 
     fun updateInvoiceStatus(status: InvoiceStatus) {
         coroutineScope.launch {

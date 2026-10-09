@@ -501,6 +501,7 @@ object FirestoreDataRepository {
             paidAmount = valueDouble("paidAmount"),
             notes = valueString("notes"),
             terms = valueString("terms"),
+            currencyCountry = valueString("currencyCountry"),
             payments = paymentMaps.orEmpty().mapNotNull { (it as? Map<*, *>)?.toPaymentRecord() }
         )
         return if (
@@ -526,6 +527,7 @@ object FirestoreDataRepository {
         "paidAmount" to paidAmount,
         "notes" to notes,
         "terms" to terms,
+        "currencyCountry" to currencyCountry,
         "payments" to payments.map { it.toFirestoreMap() }
     )
 
