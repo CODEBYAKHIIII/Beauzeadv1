@@ -55,7 +55,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
@@ -65,10 +64,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.InvoiceStatus
 import com.example.util.WavesAds
-import com.example.ui.theme.AccentCyan
 import com.example.ui.theme.BackgroundColor
-import com.example.ui.theme.BannerBg
-import com.example.ui.theme.BannerBorder
 import com.example.ui.theme.BorderGray
 import com.example.ui.theme.ButtonTextStyle
 import com.example.ui.theme.CardBorder

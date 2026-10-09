@@ -19,6 +19,7 @@ import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.MobileAds
 import com.google.android.gms.ads.rewarded.RewardedAd
 import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
+import com.google.android.ump.ConsentInformation
 import com.google.android.ump.ConsentRequestParameters
 import com.google.android.ump.UserMessagingPlatform
 import java.util.concurrent.atomic.AtomicBoolean
@@ -200,5 +201,27 @@ object WavesAds {
             .putLong(KEY_ADS_REMOVED_UNTIL, System.currentTimeMillis() + AD_FREE_DURATION_MS)
             .apply()
         adsRemoved.value = true
+    }
+
+    /**
+     * True when Google requires a user-facing privacy options entry point
+     * (typically EEA/UK users). Settings uses this to stay compliant.
+     */
+    fun privacyOptionsRequired(activity: Activity): Boolean =
+        UserMessagingPlatform.getConsentInformation(activity).privacyOptionsRequirementStatus ==
+            ConsentInformation.PrivacyOptionsRequirementStatus.REQUIRED
+
+    /**
+     * Opens Google's privacy options form so users can review or revoke
+     * their ad consent choices at any time (Google UMP requirement).
+     */
+    fun showPrivacyOptions(activity: Activity, onResult: (Boolean, String) -> Unit) {
+        UserMessagingPlatform.showPrivacyOptionsForm(activity) { formError ->
+            if (formError != null) {
+                onResult(false, "Privacy options are not available right now.")
+            } else {
+                onResult(true, "Privacy choices saved.")
+            }
+        }
     }
 }

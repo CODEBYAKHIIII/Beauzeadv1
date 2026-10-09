@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.Policy
+import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarRate
@@ -213,6 +214,22 @@ fun SettingsHomeScreen(
                     )
                     HorizontalDivider(color = BorderGray)
                     SettingsRowItem(
+                        icon = Icons.Filled.PrivacyTip,
+                        label = "Privacy Choices",
+                        subtitle = "Review your ad consent choices",
+                        onClick = {
+                            val activity = context as? android.app.Activity
+                            if (activity == null) {
+                                showDemoToast(context, "Not available right now.")
+                            } else {
+                                WavesAds.showPrivacyOptions(activity) { _, message ->
+                                    showDemoToast(context, message)
+                                }
+                            }
+                        }
+                    )
+                    HorizontalDivider(color = BorderGray)
+                    SettingsRowItem(
                         icon = Icons.Filled.StarRate,
                         label = "Rate the App",
                         onClick = { showDemoToast(context, "Thank you for rating 5 stars!") }
@@ -221,7 +238,7 @@ fun SettingsHomeScreen(
                     SettingsRowItem(
                         icon = Icons.Filled.Info,
                         label = "Version",
-                        subtitle = "1.0.4 (Production)",
+                        subtitle = "1.0.5 (Production)",
                         showArrow = false,
                         onClick = {}
                     )
