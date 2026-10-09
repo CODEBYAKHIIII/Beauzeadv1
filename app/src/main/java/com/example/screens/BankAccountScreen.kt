@@ -52,11 +52,12 @@ import com.example.ui.theme.TextSecondary
 import com.example.util.WavesValidation
 
 /**
- * The field accepts either an Indian IFSC or an international SWIFT/BIC,
- * so it is valid when either central validator accepts the value.
+ * Optional field: blank is valid (bank details are optional and print as "Nill"
+ * on the invoice PDF). When provided, it must be a valid Indian IFSC or an
+ * international SWIFT/BIC, so it is valid when either central validator accepts it.
  */
 private fun validateIfscOrSwift(value: String): String? = when {
-    value.isBlank() -> "IFSC / SWIFT / IBAN is required"
+    value.isBlank() -> null
     WavesValidation.ifsc(value) == null || WavesValidation.swiftBic(value) == null -> null
     else -> "Enter a valid IFSC (e.g. HDFC0000123) or SWIFT/BIC (8 or 11 characters)"
 }
@@ -92,22 +93,26 @@ fun BankAccountScreen(
     var upiId by remember { mutableStateOf(initial.upiId) }
     var hasAttemptedSave by remember { mutableStateOf(false) }
 
+    // Every bank field is optional: the invoice PDF already prints "Nill" for
+    // account details the user has not filled in. Only format-check what IS given.
     val bankNameError =
-        if (hasAttemptedSave) WavesValidation.required(bankName, "Bank name") else null
+        if (hasAttemptedSave && bankName.isNotBlank()) WavesValidation.required(bankName, "Bank name") else null
     val accountHolderError =
-        if (hasAttemptedSave) WavesValidation.name(accountHolder, "Account holder name") else null
+        if (hasAttemptedSave && accountHolder.isNotBlank()) WavesValidation.name(accountHolder, "Account holder name") else null
     val accountNumberError =
-        if (hasAttemptedSave) WavesValidation.bankAccountNumber(accountNumber) else null
+        if (hasAttemptedSave && accountNumber.isNotBlank()) WavesValidation.bankAccountNumber(accountNumber) else null
     val ifscError = if (hasAttemptedSave) validateIfscOrSwift(ifscCode) else null
     val upiIdError =
         if (hasAttemptedSave && upiId.isNotBlank()) WavesValidation.upiId(upiId) else null
 
     fun saveBankDetails() {
         hasAttemptedSave = true
+        // Optional fields: blank saves fine (the PDF shows "Nill"); anything that
+        // IS filled in must still be format-valid.
         if (listOfNotNull(
-                WavesValidation.required(bankName, "Bank name"),
-                WavesValidation.name(accountHolder, "Account holder name"),
-                WavesValidation.bankAccountNumber(accountNumber),
+                if (bankName.isNotBlank()) WavesValidation.required(bankName, "Bank name") else null,
+                if (accountHolder.isNotBlank()) WavesValidation.name(accountHolder, "Account holder name") else null,
+                if (accountNumber.isNotBlank()) WavesValidation.bankAccountNumber(accountNumber) else null,
                 validateIfscOrSwift(ifscCode),
                 if (upiId.isNotBlank()) WavesValidation.upiId(upiId) else null
             ).isNotEmpty()
@@ -194,7 +199,7 @@ fun BankAccountScreen(
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "These details appear on every invoice PDF to make it easy for your clients to pay directly via Bank Transfer or UPI.",
+                        text = "Optional — details you add appear on every invoice PDF so your clients can pay you directly via Bank Transfer or UPI. Leave blank if you do not want payment details on invoices.",
                         fontSize = 13.sp,
                         color = TextSecondary,
                         lineHeight = 18.sp

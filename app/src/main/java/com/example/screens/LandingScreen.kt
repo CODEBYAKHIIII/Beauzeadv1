@@ -51,7 +51,7 @@ fun LandingScreen(
         "Create invoices in 30s",
         "Global tax support",
         "Export PDF instantly",
-        "Works 100% offline"
+        "Secure cloud sync & backup"
     )
 
     Column(

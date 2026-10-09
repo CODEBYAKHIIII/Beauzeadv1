@@ -232,7 +232,27 @@ fun SettingsHomeScreen(
                     SettingsRowItem(
                         icon = Icons.Filled.StarRate,
                         label = "Rate the App",
-                        onClick = { showDemoToast(context, "Thank you for rating 5 stars!") }
+                        subtitle = "Rate WAVES on Google Play",
+                        onClick = {
+                            val appPackage = context.packageName
+                            try {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$appPackage"))
+                                )
+                            } catch (_: ActivityNotFoundException) {
+                                // No Play Store app installed: fall back to the web listing.
+                                try {
+                                    context.startActivity(
+                                        Intent(
+                                            Intent.ACTION_VIEW,
+                                            Uri.parse("https://play.google.com/store/apps/details?id=$appPackage")
+                                        )
+                                    )
+                                } catch (_: Exception) {
+                                    showDemoToast(context, "Google Play is not available on this device.")
+                                }
+                            }
+                        }
                     )
                     HorizontalDivider(color = BorderGray)
                     SettingsRowItem(

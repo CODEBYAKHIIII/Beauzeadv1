@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Payment
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -42,6 +43,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -107,6 +109,7 @@ fun InvoiceDetailScreen(
         .collectAsState(initial = FirestoreState.Loading)
     var showPaymentSheet by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val invoice = when (val state = invoiceState) {
@@ -206,14 +209,7 @@ fun InvoiceDetailScreen(
                                 text = { Text("Delete Invoice") },
                                 onClick = {
                                     menuExpanded = false
-                                    coroutineScope.launch {
-                                        try {
-                                            FirestoreDataRepository.deleteInvoice(invoice.id)
-                                            onNavigateBack()
-                                        } catch (exception: Exception) {
-                                            showDemoToast(context, exception.localizedMessage ?: "Unable to delete invoice.")
-                                        }
-                                    }
+                                    showDeleteConfirmation = true
                                 }
                             )
                         }
@@ -554,7 +550,29 @@ fun InvoiceDetailScreen(
                         icon = Icons.Filled.Delete,
                         isPrimary = false,
                         isDestructive = true,
+                        onClick = { showDeleteConfirmation = true },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(28.dp))
+        }
+
+        if (showDeleteConfirmation) {
+            AlertDialog(
+                onDismissRequest = { showDeleteConfirmation = false },
+                title = { Text("Delete this invoice?") },
+                text = {
+                    Text(
+                        "Invoice ${invoice.id} and its payment history will be permanently removed. " +
+                            "This cannot be undone."
+                    )
+                },
+                confirmButton = {
+                    TextButton(
                         onClick = {
+                            showDeleteConfirmation = false
                             coroutineScope.launch {
                                 try {
                                     FirestoreDataRepository.deleteInvoice(invoice.id)
@@ -563,13 +581,17 @@ fun InvoiceDetailScreen(
                                     showDemoToast(context, exception.localizedMessage ?: "Unable to delete invoice.")
                                 }
                             }
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
+                        }
+                    ) {
+                        Text("Delete", color = DangerRed, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteConfirmation = false }) {
+                        Text("Cancel")
+                    }
                 }
-            }
-
-            Spacer(modifier = Modifier.height(28.dp))
+            )
         }
 
         if (showPaymentSheet) {

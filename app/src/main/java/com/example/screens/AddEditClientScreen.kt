@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -53,6 +54,7 @@ import com.example.data.Client
 import com.example.data.FirestoreDataRepository
 import com.example.ui.theme.AccentCyan
 import com.example.ui.theme.BackgroundColor
+import com.example.ui.theme.DangerRed
 import com.example.ui.theme.InputBorderGray
 import com.example.ui.theme.OnPrimary
 import com.example.ui.theme.SurfaceColor
@@ -77,6 +79,7 @@ fun AddEditClientScreen(
     var showSuccess by remember { mutableStateOf(false) }
     var hasSubmitted by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
@@ -384,7 +387,29 @@ fun AddEditClientScreen(
                     text = "DELETE CLIENT",
                     icon = Icons.Filled.Delete,
                     isDestructive = true,
+                    onClick = { showDeleteConfirmation = true }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+
+    if (showDeleteConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmation = false },
+            title = { Text("Delete this client?") },
+            text = {
+                Text(
+                    "$name will be permanently removed from your client list. " +
+                        "Invoices already created for this client stay in your records. " +
+                        "This cannot be undone."
+                )
+            },
+            confirmButton = {
+                TextButton(
                     onClick = {
+                        showDeleteConfirmation = false
                         coroutineScope.launch {
                             isSaving = true
                             try {
@@ -397,10 +422,15 @@ fun AddEditClientScreen(
                             }
                         }
                     }
-                )
+                ) {
+                    Text("Delete", color = DangerRed, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmation = false }) {
+                    Text("Cancel")
+                }
             }
-
-            Spacer(modifier = Modifier.height(24.dp))
-        }
+        )
     }
 }

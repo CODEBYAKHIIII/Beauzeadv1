@@ -80,8 +80,8 @@ import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 import com.example.ui.theme.WarningAmber
 
-fun showDemoToast(context: Context, message: String = "Demo only") {
-    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+fun showDemoToast(context: Context, message: String = "Demo only", duration: Int = Toast.LENGTH_SHORT) {
+    Toast.makeText(context, message, duration).show()
 }
 
 @Composable

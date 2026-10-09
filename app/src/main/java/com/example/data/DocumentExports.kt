@@ -162,7 +162,20 @@ object DocumentExports {
             }
         )
 
+    /**
+     * Copies [file] into the user-visible Downloads location.
+     *
+     * - Android 10+ (Q): MediaStore Downloads entry (no permission required).
+     * - Android 7-9: app Download folder, then registered with the system
+     *   DownloadManager so the file also appears in the user's Downloads app —
+     *   previously the file landed in the app-private Android/data folder that
+     *   no file browser shows, which looked like "the download never saved".
+     *
+     * The source temp file is removed after a successful copy. Errors are
+     * phrased for end users instead of raw ENOENT stack noise.
+     */
     fun saveToDownloads(context: Context, file: File, displayName: String, mimeType: String): String {
+        require(file.exists()) { "The document to save could not be found. Please try again." }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
@@ -171,29 +184,48 @@ object DocumentExports {
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
             val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                ?: error("Unable to create a Downloads file.")
+                ?: error("Android refused the Downloads entry. Free up storage space and try again.")
             try {
                 val output = context.contentResolver.openOutputStream(uri)
-                    ?: error("Unable to open the Downloads file.")
-                output.use { file.inputStream().use { input -> input.copyTo(output) } }
+                    ?: error("Android blocked writing to the Downloads entry.")
+                output.use { destination -> file.inputStream().use { input -> input.copyTo(destination) } }
                 context.contentResolver.update(
                     uri,
                     ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
                     null,
                     null
                 )
+                file.delete()
                 return "Downloads/$displayName"
             } catch (exception: Exception) {
-                context.contentResolver.delete(uri, null, null)
+                runCatching { context.contentResolver.delete(uri, null, null) }
                 throw exception
             }
         }
 
         val directory = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-            ?: error("Downloads storage is unavailable.")
+            ?: error("Downloads storage is unavailable on this device.")
         if (!directory.exists() && !directory.mkdirs()) error("Unable to create the Downloads folder.")
-        file.copyTo(File(directory, displayName), overwrite = true)
-        return directory.resolve(displayName).absolutePath
+        val destination = directory.resolve(displayName)
+        file.copyTo(destination, overwrite = true)
+        // Register the file with the Downloads app so users can actually find it.
+        val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as? android.app.DownloadManager
+        if (downloadManager != null) {
+            @Suppress("DEPRECATION")
+            runCatching {
+                downloadManager.addCompletedDownload(
+                    displayName,
+                    "WAVES export",
+                    true,
+                    mimeType,
+                    destination.absolutePath,
+                    destination.length(),
+                    true
+                )
+            }
+        }
+        file.delete()
+        return destination.absolutePath
     }
 
     fun share(context: Context, file: File, mimeType: String, chooserTitle: String) {

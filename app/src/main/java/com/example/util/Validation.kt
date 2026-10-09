@@ -180,13 +180,19 @@ object WavesValidation {
         return "Enter $label as e.g. 25 Dec 2025"
     }
 
-    /** Bank account number: 6-18 digits. */
+    /**
+     * Bank account number, optional: blank is valid because bank details are
+     * optional everywhere (an empty section prints as "Nill" on the PDF).
+     * Accepts 6-18 digits (most domestic accounts) or 6-34 letters/digits
+     * (international IBAN-style numbers).
+     */
     fun bankAccountNumber(value: String): String? {
         val trimmed = value.trim().replace(" ", "")
+        if (trimmed.isEmpty()) return null
         return when {
-            trimmed.isEmpty() -> "Account number is required"
-            !Regex("^\\d{6,18}$").matches(trimmed) -> "Account number must be 6-18 digits"
-            else -> null
+            Regex("^\\d{6,18}$").matches(trimmed) -> null
+            Regex("^[A-Za-z0-9]{6,34}$").matches(trimmed) -> null
+            else -> "Enter a valid account number (6-18 digits, or 6-34 letters/digits for IBAN)"
         }
     }
 

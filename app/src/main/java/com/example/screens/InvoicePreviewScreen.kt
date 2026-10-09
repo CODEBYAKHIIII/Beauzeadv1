@@ -82,6 +82,20 @@ fun InvoicePreviewScreen(
     var currentPage by remember { mutableIntStateOf(0) }
     var pageBitmap by remember { mutableStateOf<Bitmap?>(null) }
 
+    // Every PDF generated while this screen is alive is tracked here and deleted
+    // together on final disposal. Never delete a temp file while the screen can
+    // still be reading it: disposing the old DisposableEffect(pdfFile) used to
+    // delete the freshly assigned file (the lambda read the current var, not the
+    // captured key), so the renderer then opened a missing file and the preview
+    // showed "open failed: ENOENT (No such file or directory)".
+    val generatedPdfs = remember { mutableListOf<File>() }
+    DisposableEffect(Unit) {
+        onDispose {
+            generatedPdfs.forEach { file -> runCatching { file.delete() } }
+            generatedPdfs.clear()
+        }
+    }
+
     val invoiceState by remember(invoiceId) { FirestoreDataRepository.observeInvoice(invoiceId) }
         .collectAsState(initial = FirestoreState.Loading)
     val businessState by remember { FirestoreDataRepository.observeBusinessProfile() }
@@ -114,8 +128,6 @@ fun InvoicePreviewScreen(
         isRendering = true
         renderError = null
         pageBitmap = null
-        pdfFile?.delete()
-        pdfFile = null
         try {
             val generated = withContext(Dispatchers.IO) {
                 val file = DocumentExports.createInvoicePdf(context, invoice, business, client)
@@ -129,6 +141,7 @@ fun InvoicePreviewScreen(
                     throw exception
                 }
             }
+            generatedPdfs.add(generated.first)
             pdfFile = generated.first
             pageCount = generated.second
             currentPage = 0
@@ -157,20 +170,18 @@ fun InvoicePreviewScreen(
                     }
                 }
             }
-            pageBitmap = bitmap
+            // Drop a stale render silently if a newer PDF has replaced this one.
+            if (pdfFile == file) {
+                pageBitmap = bitmap
+            } else {
+                bitmap.recycle()
+            }
         } catch (exception: CancellationException) {
             throw exception
         } catch (exception: Exception) {
-            renderError = exception.localizedMessage ?: "Unable to render this invoice page."
-        }
-    }
-
-    DisposableEffect(pdfFile) {
-        onDispose {
-            // Only delete the temp file here. Never recycle the bitmap manually:
-            // the composable may still be drawing it during regeneration, which
-            // crashes with "Canvas: trying to use a recycled bitmap". GC reclaims it.
-            pdfFile?.delete()
+            if (pdfFile == file) {
+                renderError = exception.localizedMessage ?: "Unable to render this invoice page."
+            }
         }
     }
 
@@ -182,6 +193,7 @@ fun InvoicePreviewScreen(
                 val pdf = withContext(Dispatchers.IO) {
                     DocumentExports.createInvoicePdf(context, invoice, business, client)
                 }
+                generatedPdfs.add(pdf)
                 if (share) {
                     DocumentExports.share(context, pdf, "application/pdf", "Share invoice ${invoice.id}")
                 } else {
@@ -193,7 +205,7 @@ fun InvoicePreviewScreen(
                             "application/pdf"
                         )
                     }
-                    showDemoToast(context, "Invoice PDF saved to $location")
+                    showDemoToast(context, "Invoice PDF saved to $location", android.widget.Toast.LENGTH_LONG)
                 }
             } catch (exception: CancellationException) {
                 throw exception
