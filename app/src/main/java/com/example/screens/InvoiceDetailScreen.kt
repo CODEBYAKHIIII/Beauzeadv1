@@ -21,14 +21,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Payment
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -94,6 +91,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -110,6 +109,10 @@ fun InvoiceDetailScreen(
     var showPaymentSheet by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
+    var showMarkPaidDialog by remember { mutableStateOf(false) }
+    var showWriteOffConfirmation by remember { mutableStateOf(false) }
+    var showCancelConfirmation by remember { mutableStateOf(false) }
+    var isExportingPdf by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val invoice = when (val state = invoiceState) {
@@ -163,6 +166,39 @@ fun InvoiceDetailScreen(
         }
     }
 
+    fun downloadInvoicePdf() {
+        if (isExportingPdf) return
+        coroutineScope.launch {
+            isExportingPdf = true
+            var pdf: File? = null
+            try {
+                pdf = withContext(Dispatchers.IO) {
+                    val business = FirestoreDataRepository.getBusinessProfile()
+                    val client = FirestoreDataRepository.getClient(invoice.clientId)
+                    DocumentExports.createInvoicePdf(context, invoice, business, client)
+                }
+                val location = withContext(Dispatchers.IO) {
+                    DocumentExports.saveToDownloads(
+                        context,
+                        pdf,
+                        "invoice-${invoice.id}.pdf",
+                        "application/pdf"
+                    )
+                }
+                // saveToDownloads moves the temporary file into Downloads; nothing left to clean.
+                pdf = null
+                showDemoToast(context, "Invoice PDF saved to $location", android.widget.Toast.LENGTH_LONG)
+            } catch (exception: CancellationException) {
+                throw exception
+            } catch (exception: Exception) {
+                showDemoToast(context, exception.localizedMessage ?: "Unable to download invoice PDF.")
+            } finally {
+                pdf?.let { leftover -> runCatching { leftover.delete() } }
+                isExportingPdf = false
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
             WavesHeader(
@@ -189,20 +225,6 @@ fun InvoiceDetailScreen(
                                 onClick = {
                                     menuExpanded = false
                                     onNavigateToPreview(invoice.id)
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Duplicate Invoice") },
-                                onClick = {
-                                    menuExpanded = false
-                                    coroutineScope.launch {
-                                        try {
-                                            FirestoreDataRepository.duplicateInvoice(invoice.id)
-                                            showDemoToast(context, "Invoice duplicated as a new pending invoice.")
-                                        } catch (exception: Exception) {
-                                            showDemoToast(context, exception.localizedMessage ?: "Unable to duplicate invoice.")
-                                        }
-                                    }
                                 }
                             )
                             DropdownMenuItem(
@@ -440,24 +462,27 @@ fun InvoiceDetailScreen(
             // ===== ACTIONS =====
             SectionHeader(title = "ACTIONS")
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    ActionButtonItem(
-                        text = "Record Payment",
-                        icon = Icons.Filled.Payment,
-                        isPrimary = true,
-                        onClick = { showPaymentSheet = true },
-                        modifier = Modifier.weight(1f)
-                    )
-                    ActionButtonItem(
-                        text = "Mark Paid",
-                        icon = Icons.Filled.CheckCircle,
-                        isPrimary = false,
-                        onClick = { updateInvoiceStatus(InvoiceStatus.PAID) },
-                        modifier = Modifier.weight(1f)
-                    )
+                // Payment actions only make sense while there is an outstanding balance.
+                if (balanceDue > 0) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        ActionButtonItem(
+                            text = "Record Payment",
+                            icon = Icons.Filled.Payment,
+                            isPrimary = true,
+                            onClick = { showPaymentSheet = true },
+                            modifier = Modifier.weight(1f)
+                        )
+                        ActionButtonItem(
+                            text = "Mark Paid",
+                            icon = Icons.Filled.CheckCircle,
+                            isPrimary = false,
+                            onClick = { showMarkPaidDialog = true },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                 }
 
                 Row(
@@ -465,25 +490,12 @@ fun InvoiceDetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     ActionButtonItem(
-                        text = "Mark Half Paid",
-                        icon = Icons.Filled.Receipt,
-                        isPrimary = false,
-                        onClick = { updateInvoiceStatus(InvoiceStatus.HALF_PAID) },
-                        modifier = Modifier.weight(1f)
-                    )
-                    ActionButtonItem(
-                        text = "Download PDF",
+                        text = if (isExportingPdf) "Downloading..." else "Download PDF",
                         icon = Icons.Filled.Download,
                         isPrimary = false,
-                        onClick = { onNavigateToPreview(invoice.id) },
+                        onClick = ::downloadInvoicePdf,
                         modifier = Modifier.weight(1f)
                     )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
                     ActionButtonItem(
                         text = "Share",
                         icon = Icons.Filled.Share,
@@ -491,69 +503,41 @@ fun InvoiceDetailScreen(
                         onClick = ::shareInvoicePdf,
                         modifier = Modifier.weight(1f)
                     )
-                    ActionButtonItem(
-                        text = "Copy Invoice #",
-                        icon = Icons.Filled.Link,
-                        isPrimary = false,
-                        onClick = {
-                            DocumentExports.copyInvoiceNumber(context, invoice.id)
-                            showDemoToast(context, "Invoice number copied")
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
                 }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    ActionButtonItem(
-                        text = "Write Off",
-                        icon = Icons.Filled.Cancel,
-                        isPrimary = false,
-                        isDestructive = true,
-                        onClick = { updateInvoiceStatus(InvoiceStatus.WRITTEN_OFF) },
-                        modifier = Modifier.weight(1f)
-                    )
-                    ActionButtonItem(
-                        text = "Cancel Invoice",
-                        icon = Icons.Filled.Cancel,
-                        isPrimary = false,
-                        isDestructive = true,
-                        onClick = { updateInvoiceStatus(InvoiceStatus.CANCELLED) },
-                        modifier = Modifier.weight(1f)
-                    )
+                // Write-off and cancellation are final states; hide them once applied.
+                if (invoice.status != InvoiceStatus.CANCELLED && invoice.status != InvoiceStatus.WRITTEN_OFF) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        ActionButtonItem(
+                            text = "Write Off",
+                            icon = Icons.Filled.Cancel,
+                            isPrimary = false,
+                            isDestructive = true,
+                            onClick = { showWriteOffConfirmation = true },
+                            modifier = Modifier.weight(1f)
+                        )
+                        ActionButtonItem(
+                            text = "Cancel Invoice",
+                            icon = Icons.Filled.Cancel,
+                            isPrimary = false,
+                            isDestructive = true,
+                            onClick = { showCancelConfirmation = true },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                 }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    ActionButtonItem(
-                        text = "Duplicate",
-                        icon = Icons.Filled.ContentCopy,
-                        isPrimary = false,
-                        onClick = {
-                            coroutineScope.launch {
-                                try {
-                                    FirestoreDataRepository.duplicateInvoice(invoice.id)
-                                    showDemoToast(context, "Invoice duplicated as a new pending invoice.")
-                                } catch (exception: Exception) {
-                                    showDemoToast(context, exception.localizedMessage ?: "Unable to duplicate invoice.")
-                                }
-                            }
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-                    ActionButtonItem(
-                        text = "Delete",
-                        icon = Icons.Filled.Delete,
-                        isPrimary = false,
-                        isDestructive = true,
-                        onClick = { showDeleteConfirmation = true },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
+                ActionButtonItem(
+                    text = "Delete",
+                    icon = Icons.Filled.Delete,
+                    isPrimary = false,
+                    isDestructive = true,
+                    onClick = { showDeleteConfirmation = true },
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
 
             Spacer(modifier = Modifier.height(28.dp))
@@ -611,6 +595,84 @@ fun InvoiceDetailScreen(
                             notes = ""
                         )
                     )
+                }
+            )
+        }
+
+        if (showMarkPaidDialog) {
+            MarkPaidDialog(
+                balanceDue = balanceDue,
+                formatAmount = { fmt(it) },
+                onDismissRequest = { showMarkPaidDialog = false },
+                onPaymentConfirmed = { amount, paymentDate ->
+                    FirestoreDataRepository.recordPayment(
+                        invoice.id,
+                        PaymentRecord(
+                            id = "payment_${UUID.randomUUID()}",
+                            amount = amount,
+                            date = paymentDate,
+                            method = "Manual",
+                            reference = "Marked as paid in app",
+                            notes = ""
+                        )
+                    )
+                }
+            )
+        }
+
+        if (showWriteOffConfirmation) {
+            AlertDialog(
+                onDismissRequest = { showWriteOffConfirmation = false },
+                title = { Text("Write off this invoice?") },
+                text = {
+                    Text(
+                        "Invoice ${invoice.id} will be marked as written off" +
+                            (if (balanceDue > 0) " and its outstanding balance of ${fmt(balanceDue)} will be cleared" else "") +
+                            ". This cannot be undone."
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showWriteOffConfirmation = false
+                            updateInvoiceStatus(InvoiceStatus.WRITTEN_OFF)
+                        }
+                    ) {
+                        Text("Write Off", color = DangerRed, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showWriteOffConfirmation = false }) {
+                        Text("Keep Invoice")
+                    }
+                }
+            )
+        }
+
+        if (showCancelConfirmation) {
+            AlertDialog(
+                onDismissRequest = { showCancelConfirmation = false },
+                title = { Text("Cancel this invoice?") },
+                text = {
+                    Text(
+                        "Invoice ${invoice.id} will be cancelled and any outstanding balance " +
+                            "will no longer be collectible. This cannot be undone."
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showCancelConfirmation = false
+                            updateInvoiceStatus(InvoiceStatus.CANCELLED)
+                        }
+                    ) {
+                        Text("Cancel Invoice", color = DangerRed, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showCancelConfirmation = false }) {
+                        Text("Keep Invoice")
+                    }
                 }
             )
         }
@@ -780,4 +842,186 @@ private fun RecordPaymentBottomSheet(
             Spacer(modifier = Modifier.height(16.dp))
         }
     }
+}
+
+/**
+ * "Mark Paid" confirmation dialog. Asks for the payment date and whether the
+ * invoice is settled in full or with a custom amount, then records the payment
+ * through the same transactional path as the payment sheet so the payment
+ * history and the invoice status stay consistent.
+ */
+@Composable
+private fun MarkPaidDialog(
+    balanceDue: Double,
+    formatAmount: (Double) -> String,
+    onDismissRequest: () -> Unit,
+    onPaymentConfirmed: suspend (amount: Double, paymentDate: String) -> Unit
+) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val modes = listOf("Paid in Full", "Custom Paid")
+    var paymentMode by remember { mutableStateOf(modes.first()) }
+    var amountText by remember { mutableStateOf("") }
+    var dateText by remember {
+        mutableStateOf(ReportDateUtils.displayDate(ReportDateUtils.currentDate()))
+    }
+    var isSaving by remember { mutableStateOf(false) }
+    var hasAttemptedSave by remember { mutableStateOf(false) }
+    var saveError by remember { mutableStateOf("") }
+
+    val isCustomMode = paymentMode == "Custom Paid"
+    val parsedAmount = amountText.trim().replace(",", "").toDoubleOrNull()
+
+    val amountError = if (hasAttemptedSave && isCustomMode) {
+        WavesValidation.firstError(
+            WavesValidation.amount(amountText, "Amount"),
+            if (parsedAmount != null && parsedAmount > balanceDue) {
+                "Amount exceeds the outstanding balance"
+            } else null
+        )
+    } else null
+    val dateError = if (hasAttemptedSave) {
+        WavesValidation.dateText(dateText, "Date of payment")
+    } else null
+
+    // Live "balance left" preview for the custom amount mode.
+    val balanceLeft = when {
+        !isCustomMode -> 0.0
+        parsedAmount == null -> balanceDue
+        else -> (balanceDue - parsedAmount).coerceAtLeast(0.0)
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!isSaving) onDismissRequest() },
+        title = { Text("Mark as Paid") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "Outstanding balance: ${formatAmount(balanceDue)}",
+                    fontSize = 13.sp,
+                    color = TextSecondary
+                )
+
+                Column {
+                    Text(
+                        "Payment amount",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        modes.forEach { mode ->
+                            val selected = paymentMode == mode
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(40.dp)
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(if (selected) EmeraldInk else SurfaceColor)
+                                    .clickable { paymentMode = mode },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    mode,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (selected) OnPrimary else TextSecondary
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (isCustomMode) {
+                    WavesTextField(
+                        value = amountText,
+                        onValueChange = { amountText = it; saveError = "" },
+                        label = "Amount received",
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        errorMessage = amountError
+                    )
+                    Text(
+                        text = "Balance left: ${formatAmount(balanceLeft)}",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (balanceLeft > 0.0) DangerRed else SuccessGreen
+                    )
+                } else {
+                    Text(
+                        "The full outstanding balance of ${formatAmount(balanceDue)} will be recorded as paid.",
+                        fontSize = 13.sp,
+                        color = TextSecondary
+                    )
+                }
+
+                WavesTextField(
+                    value = dateText,
+                    onValueChange = { dateText = it; saveError = "" },
+                    label = "Date of payment",
+                    placeholder = "dd MMM yyyy",
+                    errorMessage = dateError
+                )
+
+                if (saveError.isNotBlank()) {
+                    Text(saveError, color = DangerRed, fontSize = 13.sp)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !isSaving,
+                onClick = {
+                    hasAttemptedSave = true
+                    val paymentDate = ReportDateUtils.parse(dateText)?.let(ReportDateUtils::displayDate)
+                    val amount = if (isCustomMode) parsedAmount else balanceDue
+                    when {
+                        dateError != null || amountError != null -> Unit
+                        paymentDate == null -> saveError = "Enter a valid date (dd MMM yyyy)"
+                        amount == null || amount <= 0.0 ->
+                            saveError = "Enter a payment amount greater than zero."
+                        amount > balanceDue -> saveError = "Amount exceeds the outstanding balance"
+                        !isSaving -> coroutineScope.launch {
+                            isSaving = true
+                            saveError = ""
+                            try {
+                                onPaymentConfirmed(amount, paymentDate)
+                                showDemoToast(
+                                    context,
+                                    if (amount >= balanceDue) {
+                                        "Invoice marked as paid"
+                                    } else {
+                                        "Payment recorded. Balance left: " +
+                                            formatAmount((balanceDue - amount).coerceAtLeast(0.0))
+                                    },
+                                    android.widget.Toast.LENGTH_LONG
+                                )
+                                onDismissRequest()
+                            } catch (exception: CancellationException) {
+                                throw exception
+                            } catch (exception: Exception) {
+                                saveError = exception.localizedMessage ?: "Unable to record the payment."
+                            } finally {
+                                isSaving = false
+                            }
+                        }
+                    }
+                }
+            ) {
+                Text(
+                    if (isSaving) "SAVING..." else "Confirm",
+                    color = EmeraldInk,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(enabled = !isSaving, onClick = onDismissRequest) {
+                Text("Cancel")
+            }
+        }
+    )
 }
