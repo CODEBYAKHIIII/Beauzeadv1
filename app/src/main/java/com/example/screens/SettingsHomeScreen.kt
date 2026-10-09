@@ -221,7 +221,7 @@ fun SettingsHomeScreen(
                     SettingsRowItem(
                         icon = Icons.Filled.Info,
                         label = "Version",
-                        subtitle = "1.2 (Production)",
+                        subtitle = "1.0.4 (Production)",
                         showArrow = false,
                         onClick = {}
                     )
