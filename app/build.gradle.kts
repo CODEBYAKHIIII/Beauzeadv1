@@ -16,8 +16,8 @@ android {
     applicationId = "com.waves.androidapp"
     minSdk = 24
     targetSdk = 36
-    versionCode = 5
-    versionName = "1.0.2"
+    versionCode = 6
+    versionName = "1.0.3"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -110,6 +110,8 @@ dependencies {
   implementation(libs.androidx.lifecycle.viewmodel.compose)
   implementation(libs.androidx.navigation.compose)
   implementation(libs.coil.compose)
+  implementation(libs.play.services.ads)
+  implementation(libs.user.messaging.platform)
   implementation(libs.firebase.appcheck.recaptcha)
   implementation(libs.firebase.appcheck.debug)
   implementation(libs.kotlinx.coroutines.android)
