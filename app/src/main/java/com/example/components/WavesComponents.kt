@@ -64,6 +64,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.InvoiceStatus
+import com.example.util.WavesAds
 import com.example.ui.theme.AccentCyan
 import com.example.ui.theme.BackgroundColor
 import com.example.ui.theme.BannerBg
@@ -512,42 +513,9 @@ fun WavesFAB(
 
 @Composable
 fun BannerAdPlaceholder(modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(54.dp)
-            .clickable { showDemoToast(context, "Sponsored Ad Demo") }
-            .testTag("banner_ad_placeholder"),
-        shape = RoundedCornerShape(8.dp),
-        color = BannerBg,
-        border = BorderStroke(1.dp, BannerBorder)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(AccentCyan)
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                    Text("Ad", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Column {
-                    Text("Grow your business with Waves Pro", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                    Text("Upgrade for automatic payment reminders", fontSize = 10.sp, color = TextSecondary)
-                }
-            }
-            Text("Learn More →", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = EmeraldInk)
-        }
-    }
+    // Real AdMob adaptive banner. Renders nothing while the user has an
+    // active "Remove Ads" reward. Ad unit IDs live in com.example.util.WavesAds.
+    WavesAds.AdBanner(modifier = modifier.testTag("banner_ad_placeholder"))
 }
 
 @Composable

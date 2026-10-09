@@ -51,6 +51,7 @@ import com.example.components.WavesNavTab
 import com.example.components.showDemoToast
 import com.example.data.FirebaseAuthRepository
 import com.example.data.authErrorMessage
+import com.example.util.WavesAds
 import com.example.ui.theme.BackgroundColor
 import com.example.ui.theme.BorderGray
 import com.example.ui.theme.DangerRed
@@ -181,8 +182,17 @@ fun SettingsHomeScreen(
                     SettingsRowItem(
                         icon = Icons.Filled.Star,
                         label = "Remove Ads",
-                        subtitle = "One-time purchase",
-                        onClick = { showDemoToast(context, "In-app purchase is not available yet.") }
+                        subtitle = "Watch a short video - ad-free for 24 hours",
+                        onClick = {
+                            val activity = context as? android.app.Activity
+                            if (activity == null) {
+                                showDemoToast(context, "Not available right now.")
+                            } else {
+                                WavesAds.removeAdsFor24Hours(activity) { _, message ->
+                                    showDemoToast(context, message)
+                                }
+                            }
+                        }
                     )
                     HorizontalDivider(color = BorderGray)
                     SettingsRowItem(
