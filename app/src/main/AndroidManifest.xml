@@ -12,13 +12,12 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.MyApplication">
         <!--
-          AdMob App ID. This is Google's OFFICIAL TEST App ID (safe for development).
-          Replace it with the real App ID from admob.google.com before releasing to
-          Play Store, and keep it in sync with WavesAds.ADMOB_APP_ID.
+          AdMob App ID (production, from admob.google.com - Apps > Settings).
+          Ad unit IDs live in com.example.util.WavesAds.
         -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713" />
+            android:value="ca-app-pub-5485098198270460~2002630118" />
 
         <activity
             android:name=".MainActivity"

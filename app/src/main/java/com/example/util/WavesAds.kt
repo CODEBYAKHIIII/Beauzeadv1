@@ -40,11 +40,13 @@ import java.util.concurrent.atomic.AtomicBoolean
 object WavesAds {
 
     // ==================================================================
-    // AD UNIT IDs - Google's OFFICIAL TEST values. SWAP THESE 3 LINES.
+    // PRODUCTION AdMob IDs (WAVES: Invoice & Billing, admob.google.com).
+    // BANNER_UNIT_ID / REWARDED_UNIT_ID still hold Google TEST values
+    // until the two ad units are created - swap them, then release.
     // ==================================================================
-    const val ADMOB_APP_ID = "ca-app-pub-3940256099942544~3347511713" // TEST app id (mirror of AndroidManifest)
-    const val BANNER_UNIT_ID = "ca-app-pub-3940256099942544/6300978111" // TEST banner
-    const val REWARDED_UNIT_ID = "ca-app-pub-3940256099942544/5224354917" // TEST rewarded
+    const val ADMOB_APP_ID = "ca-app-pub-5485098198270460~2002630118" // production
+    const val BANNER_UNIT_ID = "ca-app-pub-3940256099942544/6300978111" // TODO: replace with Waves Banner unit
+    const val REWARDED_UNIT_ID = "ca-app-pub-3940256099942544/5224354917" // TODO: replace with Waves Rewarded unit
 
     private const val PREFS_NAME = "waves_ads_prefs"
     private const val KEY_ADS_REMOVED_UNTIL = "ads_removed_until"
